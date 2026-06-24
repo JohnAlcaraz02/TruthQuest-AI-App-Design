@@ -5,7 +5,6 @@ import {
   Link2,
   FileText,
   Image as ImageIcon,
-  Upload,
   AlertCircle,
   CheckCircle,
   Info,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { analyzeContent, type ContentAnalysisResponse } from "../services/truthquestApi";
+import ImageUploadZone from "../components/ImageUploadZone";
 
 type Tab = "url" | "text" | "image";
 
@@ -32,6 +32,7 @@ export default function Analyzer() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ContentAnalysisResponse | null>(null);
   const [inputValue, setInputValue] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const hasResult = result !== null;
 
@@ -40,6 +41,7 @@ export default function Analyzer() {
     setError(null);
     setActiveTab("url");
     setInputValue("");
+    setImagePreview(null);
   };
 
   const resetResult = () => {
@@ -47,10 +49,29 @@ export default function Analyzer() {
     setError(null);
   };
 
+  const readImageFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+      setError(null);
+    };
+    reader.onerror = () => setError("Unable to read the selected image.");
+    reader.readAsDataURL(file);
+  };
+
   const handleAnalyze = async () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed && activeTab !== "image") {
+    if (!inputValue.trim() && activeTab !== "image") {
       setError("Please enter a URL or text before analyzing.");
+      return;
+    }
+
+    if (activeTab === "image" && !imagePreview) {
+      setError("Please upload an image before analyzing.");
       return;
     }
 
@@ -59,7 +80,7 @@ export default function Analyzer() {
       setError(null);
       const response = await analyzeContent({
         mode: activeTab,
-        input: activeTab === "image" ? "this uploaded image" : trimmed,
+        input: activeTab === "image" ? imagePreview : inputValue.trim(),
       });
       setResult(response);
     } catch (analyzeError) {
@@ -148,15 +169,13 @@ export default function Analyzer() {
             )}
 
             {activeTab === "image" && !hasResult && (
-              <div className="rounded-lg border-2 border-dashed border-input p-12 text-center">
-                <Upload className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="mb-2 font-medium text-foreground">
-                  Drop image here or click to upload
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Supports PNG, JPG, WebP (max 10MB)
-                </p>
-              </div>
+              <ImageUploadZone
+                value={imagePreview}
+                onChange={(value) => {
+                  setImagePreview(value);
+                  if (hasResult) resetResult();
+                }}
+              />
             )}
 
             <button
@@ -177,7 +196,7 @@ export default function Analyzer() {
               ) : (
                 <>
                   <Brain className="h-5 w-5" />
-                  Analyze Content
+                  {activeTab === "image" ? "Analyze Image" : "Analyze Content"}
                 </>
               )}
             </button>

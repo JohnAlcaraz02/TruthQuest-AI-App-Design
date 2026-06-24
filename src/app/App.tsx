@@ -752,11 +752,19 @@ function ContentAnalyzer() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<null | "done">(null);
   const [analysis, setAnalysis] = useState<ContentAnalysisResponse | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const analyze = async () => {
+    const payloadInput = mode === "image" ? imagePreview ?? "" : input;
+    if (!payloadInput) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await analyzeContent({ mode, input });
+      const response = await analyzeContent({ mode, input: payloadInput });
       setAnalysis(response);
       setResult("done");
     } catch {
@@ -795,7 +803,7 @@ function ContentAnalyzer() {
           {([["url", <Link size={14} />, "URL"], ["text", <FileText size={14} />, "Text"], ["image", <Image size={14} />, "Image"]] as const).map(([m, icon, label]) => (
             <button
               key={m}
-              onClick={() => { setMode(m as "url" | "text" | "image"); setResult(null); }}
+              onClick={() => { setMode(m as "url" | "text" | "image"); setResult(null); setInput(""); if (m !== "image") setImagePreview(null); }}
               className={cn("flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all", mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}
             >
               {icon} {label}
@@ -813,9 +821,35 @@ function ContentAnalyzer() {
           />
         ) : (
           <div className="h-36 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-blue-300 transition-colors cursor-pointer">
-            <Upload size={24} className="text-slate-400" />
-            <p className="text-sm text-slate-500">Drop image here or <span className="font-semibold" style={{ color: BLUE }}>browse</span></p>
-            <p className="text-xs text-slate-400">PNG, JPG, WEBP up to 10MB</p>
+            <label className="flex flex-col items-center justify-center gap-2 cursor-pointer">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  if (!file.type.startsWith("image/")) {
+                    setImagePreview(null);
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => setImagePreview(reader.result as string);
+                  reader.onerror = () => setImagePreview(null);
+                  reader.readAsDataURL(file);
+                }}
+              />
+              {imagePreview ? (
+                <img src={imagePreview} alt="Uploaded preview" className="max-h-24 rounded-md object-contain" />
+              ) : (
+                <>
+                  <Upload size={24} className="text-slate-400" />
+                  <p className="text-sm text-slate-500">Drop image here or <span className="font-semibold" style={{ color: BLUE }}>browse</span></p>
+                  <p className="text-xs text-slate-400">PNG, JPG, WEBP up to 10MB</p>
+                </>
+              )}
+            </label>
           </div>
         )}
 
