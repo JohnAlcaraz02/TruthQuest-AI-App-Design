@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Shield, Search, Brain, AlertTriangle, CheckCircle, TrendingUp,
-  BookOpen, Trophy, Star, Flame, ChevronRight, ChevronDown, Upload,
+  BookOpen, Trophy, Star, Flame, ChevronRight, ChevronDown, ChevronLeft, Upload,
   Link, FileText, Image, Video, Mic, Users, BarChart2, Settings,
   Home, Zap, Award, Play, Clock, Target, Eye, Hash, Globe, ArrowRight,
   X, Menu, Bell, MessageSquare, Layers, Sparkles, Lock,
@@ -25,7 +25,30 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Screen =
   | "landing" | "dashboard" | "analyzer" | "deepfake"
-  | "learning" | "quiz" | "profile" | "teacher" | "mobile";
+  | "learning" | "quiz" | "profile" | "teacher" | "mobile"
+  | "privacy" | "terms";
+
+const screenPaths: Record<Screen, string> = {
+  landing: "/",
+  dashboard: "/dashboard",
+  analyzer: "/analyze",
+  deepfake: "/deepfake",
+  learning: "/learning",
+  quiz: "/quiz",
+  profile: "/profile",
+  teacher: "/teacher",
+  mobile: "/mobile",
+  privacy: "/privacy",
+  terms: "/terms",
+};
+
+const pathScreens: Record<string, Screen> = Object.fromEntries(
+  Object.entries(screenPaths).map(([screen, path]) => [path, screen as Screen]),
+) as Record<string, Screen>;
+
+function screenFromPath(pathname: string): Screen {
+  return pathScreens[pathname.replace(/\/$/, "") || "/"] ?? "landing";
+}
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const weeklyData = [
@@ -103,6 +126,234 @@ const modules = [
   { id: 5, title: "Social Media Literacy", icon: "📱", color: "#22C55E", xp: 180, progress: 0, lessons: 8, completed: false },
   { id: 6, title: "Digital Citizenship", icon: "🌐", color: "#EF4444", xp: 250, progress: 0, lessons: 14, completed: false },
 ];
+
+const lessonLibrary: Record<string, {
+  objective: string;
+  keyConcept: string;
+  sections: Array<{ title: string; body: string }>;
+  example: { scenario: string; breakdown: string[] };
+  commonMistake: string;
+  practice: string;
+  reflection: string;
+  checklist: string[];
+  vocabulary: Array<{ term: string; definition: string }>;
+  challenge: {
+    prompt: string;
+    goal: string;
+    items: Array<{
+      id: string;
+      label: string;
+      detail: string;
+      strength: number;
+    }>;
+    explanation: string;
+  };
+}> = {
+  "Spot Fake News": {
+    objective: "Learn the fastest red flags that separate credible reporting from misinformation.",
+    keyConcept: "Misinformation is easiest to catch when you reduce a post to one checkable claim, then inspect the evidence behind that claim.",
+    sections: [
+      { title: "Start With The Claim", body: "Identify the exact factual claim before judging the whole post. A headline may be emotional, but the core claim should be rewritten as something testable: who did what, when, where, and according to which evidence." },
+      { title: "Watch For Absolutes", body: "Words like always, never, cure, secret, guaranteed, and everyone knows often signal overclaiming. Reliable reporting usually includes limits, uncertainty, and specific sourcing." },
+      { title: "Check The Evidence Trail", body: "Look for named sources, dates, documents, original data, and links to primary evidence. Anonymous claims and circular links, where several articles all cite each other, should lower confidence." },
+      { title: "Compare Before Sharing", body: "A claim becomes stronger when independent sources with different incentives report the same facts. If every version points back to the same weak source, treat it as unverified." },
+    ],
+    example: {
+      scenario: "A post says: 'Breaking: A secret school policy will ban phones nationwide next week.'",
+      breakdown: ["Check whether a real policy document exists.", "Look for the education department or school board source.", "Search whether reputable local outlets reported the same timing.", "If no primary source exists, mark it as unverified, not true or false."],
+    },
+    commonMistake: "Do not judge only by whether the claim sounds believable. Plausible misinformation spreads because it fits what people already expect.",
+    practice: "Paste a viral headline into the analyzer and rewrite it as one factual claim you can verify.",
+    reflection: "What detail would make this claim easier to verify: a date, a named source, a document, or a direct quote?",
+    checklist: ["Find the claim", "Check the date", "Look for named evidence", "Compare with two independent sources"],
+    vocabulary: [
+      { term: "Claim", definition: "A statement that can be checked against evidence." },
+      { term: "Primary source", definition: "Original evidence such as a document, dataset, transcript, or official release." },
+      { term: "Circular sourcing", definition: "Several sources repeating the same claim without adding independent evidence." },
+    ],
+    challenge: {
+      prompt: "Rank these evidence signals from strongest to weakest for deciding whether the claim is credible.",
+      goal: "Strongest evidence should be the original source, then direct supporting documentation, then secondary reporting, then social reposts.",
+      items: [
+        { id: "official", label: "Official health agency or peer-reviewed study", detail: "Primary evidence from the source most likely to know the truth.", strength: 4 },
+        { id: "document", label: "Quoted doctor with named publication", detail: "Useful if the quote links to the actual study or report.", strength: 3 },
+        { id: "article", label: "News article summarizing the claim", detail: "Helpful, but still a layer removed from the original evidence.", strength: 2 },
+        { id: "post", label: "Anonymous social media repost", detail: "Weakest because it adds no verifiable context.", strength: 1 },
+      ],
+      explanation: "The best order starts with primary evidence and moves outward to summaries and reposts.",
+    },
+  },
+  "Understanding Bias": {
+    objective: "Recognize framing, loaded language, and missing context without assuming every biased article is false.",
+    keyConcept: "Bias is not the same as falsehood. Bias shapes emphasis, language, source choice, and what context is left out.",
+    sections: [
+      { title: "Bias Is Framing", body: "Bias often appears in what a story emphasizes, omits, or assumes. Separate observable facts from interpretation before deciding whether the article is fair." },
+      { title: "Loaded Language", body: "Emotion-heavy labels can push readers toward a conclusion before evidence is shown. Replace labels with neutral descriptions when evaluating the facts." },
+      { title: "Missing Context", body: "A story can be technically accurate and still misleading if it leaves out scale, history, counterevidence, or relevant comparisons." },
+      { title: "Source Diversity", body: "A strong conclusion should survive comparison across sources with different audiences, incentives, and editorial angles." },
+    ],
+    example: {
+      scenario: "Two articles describe the same protest. One says 'citizens gathered downtown'; another says 'angry mobs flooded the streets.'",
+      breakdown: ["Both may describe the same event.", "The second uses stronger emotional framing.", "Check crowd size, police reports, images, and multiple outlets.", "Separate event facts from tone."],
+    },
+    commonMistake: "Do not label an article fake just because it has bias. Instead, identify which parts are fact, framing, opinion, or unsupported interpretation.",
+    practice: "Choose one article and highlight three words that shape emotion more than facts.",
+    reflection: "What neutral words could replace the most emotional phrase in the article?",
+    checklist: ["Separate fact from opinion", "Identify emotional words", "Check what is missing", "Compare across viewpoints"],
+    vocabulary: [
+      { term: "Framing", definition: "The angle or emphasis used to present facts." },
+      { term: "Loaded language", definition: "Words designed to trigger emotion or judgment." },
+      { term: "Context", definition: "Background information needed to understand the significance of a claim." },
+    ],
+    challenge: {
+      prompt: "Rank these statements from most factual to most opinionated.",
+      goal: "Factual statements describe observable events; opinionated statements add judgment or emotional framing.",
+      items: [
+        { id: "data", label: "The report included data from three agencies.", detail: "Reports a concrete fact.", strength: 4 },
+        { id: "pass", label: "The bill passed 52-48 on Tuesday.", detail: "Specific, checkable, and neutral.", strength: 3 },
+        { id: "policy", label: "The mayor said the policy will start in July.", detail: "Verifiable but still a reported statement.", strength: 2 },
+        { id: "loaded", label: "The reckless officials forced a disastrous plan on families.", detail: "Uses judgment words and emotional framing.", strength: 1 },
+      ],
+      explanation: "The more a statement uses measurable facts and the less it relies on judgment words, the stronger it is as evidence.",
+    },
+  },
+  "Source Verification": {
+    objective: "Trace information back to its original source before trusting or sharing it.",
+    keyConcept: "The closer you get to the original evidence, the less you depend on someone else's summary or interpretation.",
+    sections: [
+      { title: "Primary Beats Secondary", body: "Government releases, court documents, research papers, datasets, and direct transcripts are stronger than articles that summarize those materials." },
+      { title: "Domain And Author Checks", body: "Check the final URL, publisher, author, publish date, and whether the page links to supporting evidence. A professional-looking site can still be unreviewed or misleading." },
+      { title: "Trace The Citation Chain", body: "Open the links. If a report cites another article, and that article cites a social post, your evidence may be weaker than it first appeared." },
+      { title: "Check The Date", body: "Old articles, recycled images, and outdated statistics often resurface as if they are current. Date mismatch is one of the most common misinformation patterns." },
+    ],
+    example: {
+      scenario: "An article says a court 'quietly banned' a popular app, but links only to another blog.",
+      breakdown: ["Search the court website or legal database.", "Look for the case number or official order.", "Check whether reputable outlets cite the same document.", "If the document is absent, mark the claim as unsupported."],
+    },
+    commonMistake: "Do not stop at the first link. A linked source can be weak, outdated, unrelated, or simply repeating the same claim.",
+    practice: "Open a news article and find the oldest source or document it relies on.",
+    reflection: "What is the strongest source you found: official document, reputable article, social post, or no source?",
+    checklist: ["Check final URL", "Find author/date", "Open linked evidence", "Trace claim to original source"],
+    vocabulary: [
+      { term: "Canonical URL", definition: "The preferred official URL for a page, often used to avoid duplicate or copied versions." },
+      { term: "Source laundering", definition: "A weak claim becoming more believable as it is repeated by multiple sites." },
+      { term: "Provenance", definition: "The origin and history of a piece of information or media." },
+    ],
+    challenge: {
+      prompt: "Rank these source types from strongest to weakest for verifying a new court ruling.",
+      goal: "Primary documents beat summaries, and summaries beat reposts.",
+      items: [
+        { id: "court", label: "Court document or official court website", detail: "Primary legal evidence.", strength: 4 },
+        { id: "wire", label: "Reputable wire service article", detail: "A strong summary if it cites the document.", strength: 3 },
+        { id: "screenshot", label: "Viral screenshot", detail: "Can be cropped or taken out of context.", strength: 2 },
+        { id: "chat", label: "Group chat headline", detail: "Removes source context entirely.", strength: 1 },
+      ],
+      explanation: "The court document is strongest because it is the original source. Everything else adds more distance from the evidence.",
+    },
+  },
+  "Deepfake Awareness": {
+    objective: "Understand what media manipulation tools can fake and what signals still help verification.",
+    keyConcept: "Deepfake detection is not one magic score. It is a layered process using media signals, source context, provenance, and corroboration.",
+    sections: [
+      { title: "Look Beyond The Face", body: "Visual artifacts matter, but context matters too: original uploader, source file, event timing, and whether trusted outlets have the same media." },
+      { title: "Metadata Is A Clue", body: "Missing or synthetic metadata is not proof by itself, but file type mismatches, tiny files, or embedded generator markers raise risk." },
+      { title: "Audio And Context Matter", body: "Deepfakes can target voice, timing, subtitles, or edits. Check whether the audio matches known context and whether the clip appears elsewhere." },
+      { title: "Use Multiple Checks", body: "Combine reverse image search, source checks, file inspection, audio consistency, and provenance before making a judgment." },
+    ],
+    example: {
+      scenario: "A short video appears to show a principal announcing school closure, but it was posted by an anonymous account.",
+      breakdown: ["Check the school's official channels.", "Look for the full-length video.", "Inspect whether the audio and mouth movement align.", "Treat the clip as unverified until the source confirms it."],
+    },
+    commonMistake: "Do not declare media real or fake based only on one artifact. Compression, lighting, and low quality can create false alarms.",
+    practice: "Upload a test image to the Deepfake Detector and explain which signals were strong or weak.",
+    reflection: "Which evidence would change your confidence most: official source confirmation, original file, reverse search result, or metadata?",
+    checklist: ["Check source", "Inspect metadata", "Reverse search", "Avoid sharing until verified"],
+    vocabulary: [
+      { term: "Synthetic media", definition: "Media generated or altered by software, often using AI." },
+      { term: "Metadata", definition: "File information such as type, size, dimensions, camera/app data, or timestamps." },
+      { term: "Provenance", definition: "The origin, custody, and history of a media file." },
+    ],
+    challenge: {
+      prompt: "Rank these signals from strongest to weakest for deciding whether a clip is authentic.",
+      goal: "Source and provenance matter more than one visual artifact.",
+      items: [
+        { id: "official", label: "Official account or original uploader confirmation", detail: "Best path to provenance.", strength: 4 },
+        { id: "metadata", label: "File metadata and source file inspection", detail: "Strong supporting signal, but not enough alone.", strength: 3 },
+        { id: "visual", label: "Visual artifact check", detail: "Helpful, but compression and low quality can mislead.", strength: 2 },
+        { id: "guess", label: "Gut feeling from the thumbnail", detail: "Not evidence.", strength: 1 },
+      ],
+      explanation: "Authenticity is strongest when confirmed by provenance and source, not just by a visual scan.",
+    },
+  },
+  "Social Media Literacy": {
+    objective: "Evaluate fast-moving posts, screenshots, and short clips before reacting.",
+    keyConcept: "Social platforms reward speed and emotion, but verification requires slowing down and finding original context.",
+    sections: [
+      { title: "Virality Is Not Verification", body: "Likes and reposts measure attention, not truth. Treat viral posts as unverified until evidence is traced." },
+      { title: "Screenshots Need Extra Care", body: "Screenshots are easy to crop, edit, and remove from context. Search for the original post, archived version, or a direct source." },
+      { title: "Account Context", body: "Check whether the account is new, impersonating someone, repeatedly posting sensational claims, or hiding source details." },
+      { title: "Slow The Share", body: "Pause when content makes you angry, afraid, or excited. Strong emotional reaction is a cue to verify first." },
+    ],
+    example: {
+      scenario: "A screenshot claims a celebrity endorsed a financial scheme, but the username is cropped out.",
+      breakdown: ["Search for the original post.", "Check the celebrity's verified accounts.", "Look for archived copies.", "Do not treat a cropped screenshot as primary evidence."],
+    },
+    commonMistake: "Do not use comment agreement as evidence. Coordinated or emotional comments can make weak claims feel confirmed.",
+    practice: "Pick a social post and identify what would need to be true for the post to be accurate.",
+    reflection: "What would you need to find before sharing this post with your family or class?",
+    checklist: ["Find original post", "Check account history", "Verify media date", "Pause before sharing"],
+    vocabulary: [
+      { term: "Context collapse", definition: "When a post is separated from the details needed to interpret it correctly." },
+      { term: "Impersonation", definition: "An account pretending to be a person, organization, or official source." },
+      { term: "Archive", definition: "A saved copy of a web page or post that can help verify timing and changes." },
+    ],
+    challenge: {
+      prompt: "Rank these actions from best to worst when a screenshot goes viral.",
+      goal: "The best response restores context before reacting.",
+      items: [
+        { id: "original", label: "Find the original post or archived version", detail: "Restores source context.", strength: 4 },
+        { id: "history", label: "Check the account history and posting pattern", detail: "Helps spot impersonation or spam.", strength: 3 },
+        { id: "share", label: "Share it with a warning", detail: "Still amplifies a possibly false post.", strength: 2 },
+        { id: "crop", label: "Crop the screenshot to focus on the shocking line", detail: "Removes more context.", strength: 1 },
+      ],
+      explanation: "Finding the original source comes first because it restores the missing context the screenshot removed.",
+    },
+  },
+  "Digital Citizenship": {
+    objective: "Build responsible habits for sharing, correcting, and discussing information online.",
+    keyConcept: "Being accurate online is a civic behavior: your shares, corrections, and comments affect what others believe.",
+    sections: [
+      { title: "Share With Context", body: "When sharing credible information, include the source, date, and uncertainty. Avoid stripping away context just to make a post more dramatic." },
+      { title: "Correct Clearly", body: "If you shared something wrong, correct it where people saw it. A quiet deletion does not help others learn." },
+      { title: "Respect Privacy", body: "Do not amplify private people, minors, addresses, or unverified accusations, even when a story seems important." },
+      { title: "Disagree Productively", body: "A good correction names the claim, provides better evidence, and avoids personal attacks. The goal is to improve the information environment." },
+    ],
+    example: {
+      scenario: "You shared a false weather warning in a class group chat, and several classmates reposted it.",
+      breakdown: ["Post a correction in the same chat.", "Say what was wrong and link the official weather source.", "Avoid blaming others.", "Ask classmates not to keep forwarding the old message."],
+    },
+    commonMistake: "Do not assume deleting a bad post is enough. People may have already seen, saved, or reshared it.",
+    practice: "Write a responsible correction for a fake claim you previously believed or saw online.",
+    reflection: "How can you correct misinformation without embarrassing someone or escalating conflict?",
+    checklist: ["Add source/date", "Explain uncertainty", "Correct visibly", "Protect private people"],
+    vocabulary: [
+      { term: "Correction", definition: "A clear update explaining what was wrong and what better evidence shows." },
+      { term: "Amplification", definition: "Increasing the reach of content by sharing, quoting, reposting, or reacting." },
+      { term: "Digital citizenship", definition: "Responsible participation in online communities and information spaces." },
+    ],
+    challenge: {
+      prompt: "Rank these correction actions from most responsible to least responsible.",
+      goal: "A good correction is visible, specific, and useful to the people who saw the original mistake.",
+      items: [
+        { id: "clear", label: "Post a clear correction where people saw the original", detail: "Best because it repairs the information trail.", strength: 4 },
+        { id: "source", label: "Include the better source and what changed", detail: "Makes the correction useful.", strength: 3 },
+        { id: "delete", label: "Delete the post quietly", detail: "Removes evidence but does not correct others.", strength: 2 },
+        { id: "blame", label: "Blame someone else for the mistake", detail: "Creates conflict and avoids responsibility.", strength: 1 },
+      ],
+      explanation: "A responsible correction is visible, specific, and linked to evidence. Quiet deletion is the weakest response.",
+    },
+  },
+};
 
 const badges = [
   { icon: "🏅", name: "First Analysis", earned: true },
@@ -193,6 +444,33 @@ function iconFromName(name: string) {
   }
 }
 
+type BootstrapLearningModule = NonNullable<NonNullable<AppBootstrap["learning"]>["modules"]>[number];
+
+function learningIcon(value: unknown, fallback: string) {
+  if (typeof value === "string" && value.length > 0) {
+    const Icon = iconFromName(value);
+    return <Icon size={30} />;
+  }
+  return fallback;
+}
+
+function normalizeLearningModule(module: Partial<BootstrapLearningModule> | undefined, fallback: typeof modules[number]) {
+  return {
+    id: typeof module?.id === "number" ? module.id : fallback.id,
+    title: typeof module?.title === "string" && module.title ? module.title : fallback.title,
+    icon: learningIcon(module?.icon, fallback.icon),
+    color: typeof module?.color === "string" && module.color ? module.color : fallback.color,
+    xp: typeof module?.xp === "number" ? module.xp : fallback.xp,
+    progress: typeof module?.progress === "number" ? Math.max(0, Math.min(100, module.progress)) : fallback.progress,
+    lessons: typeof module?.lessons === "number" ? module.lessons : fallback.lessons,
+    completed: typeof module?.completed === "boolean" ? module.completed : fallback.completed,
+  };
+}
+
+function shuffleItems<T>(items: T[]) {
+  return [...items].sort(() => Math.random() - 0.5);
+}
+
 // ─── Nav items ────────────────────────────────────────────────────────────────
 const navItems: { icon: React.ReactNode; label: string; screen: Screen }[] = [
   { icon: <Home size={18} />, label: "Home", screen: "dashboard" },
@@ -203,13 +481,12 @@ const navItems: { icon: React.ReactNode; label: string; screen: Screen }[] = [
   { icon: <User size={18} />, label: "Profile", screen: "profile" },
   { icon: <GraduationCap size={18} />, label: "Teacher View", screen: "teacher" },
   { icon: <Smartphone size={18} />, label: "Mobile View", screen: "mobile" },
-  { icon: <Settings size={18} />, label: "Settings", screen: "dashboard" },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════════
 // LANDING PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: AppBootstrap | null }) {
+function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) => void; bootstrap: AppBootstrap | null }) {
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const features = [
@@ -235,7 +512,7 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
   ];
 
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="min-h-screen bg-white font-sans overflow-x-hidden">
       {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -252,12 +529,12 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
             <a href="#testimonials" className="hover:text-blue-600 transition-colors">Stories</a>
           </div>
           <div className="hidden md:flex items-center gap-3">
-            <button onClick={onEnter} className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors px-4 py-2">Log in</button>
-            <button onClick={onEnter} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-all hover:opacity-90 shadow-sm" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+            <button onClick={() => onNavigate("dashboard")} className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors px-4 py-2">Log in</button>
+            <button onClick={() => onNavigate("dashboard")} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-all hover:opacity-90 shadow-sm" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
               Get Started Free
             </button>
           </div>
-          <button className="md:hidden" onClick={() => setMobileMenu(!mobileMenu)}>
+          <button className="md:hidden" aria-label="Toggle navigation menu" onClick={() => setMobileMenu(!mobileMenu)}>
             {mobileMenu ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
@@ -265,55 +542,55 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
           <div className="md:hidden border-t border-slate-100 bg-white px-6 py-4 flex flex-col gap-4">
             <a href="#features" className="text-sm font-medium text-slate-700">Features</a>
             <a href="#how" className="text-sm font-medium text-slate-700">How It Works</a>
-            <button onClick={onEnter} className="text-sm font-semibold text-white px-4 py-2.5 rounded-lg w-full" style={{ background: BLUE }}>Get Started Free</button>
+            <button onClick={() => onNavigate("dashboard")} className="text-sm font-semibold text-white px-4 py-2.5 rounded-lg w-full" style={{ background: BLUE }}>Get Started Free</button>
           </div>
         )}
       </nav>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden max-w-full">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full opacity-[0.06]" style={{ background: `radial-gradient(circle, ${BLUE}, transparent)` }} />
           <div className="absolute -bottom-32 -left-32 w-[400px] h-[400px] rounded-full opacity-[0.06]" style={{ background: `radial-gradient(circle, ${TEAL}, transparent)` }} />
         </div>
-        <div className="max-w-6xl mx-auto px-6 pt-20 pb-24 grid md:grid-cols-2 gap-12 items-center">
-          <div>
+        <div className="max-w-6xl mx-auto px-6 pt-14 pb-20 md:pt-20 md:pb-24 grid lg:grid-cols-2 gap-10 lg:gap-12 items-center min-w-0 max-w-full">
+          <div className="min-w-0 max-w-[342px] sm:max-w-xl lg:max-w-none">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-blue-100 bg-blue-50 mb-6">
               <Sparkles size={14} style={{ color: BLUE }} />
               <span className="text-xs font-semibold" style={{ color: BLUE }}>AI-Powered Media Literacy</span>
             </div>
-            <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 leading-[1.08] tracking-tight mb-6">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-slate-900 leading-[1.08] tracking-tight mb-6">
               Navigate<br />
               <span style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 Information
               </span><br />
               with Confidence.
             </h1>
-            <p className="text-xl text-slate-500 leading-relaxed mb-8 max-w-md">
+            <p className="text-base sm:text-xl text-slate-500 leading-relaxed mb-8 max-w-[342px] sm:max-w-md">
               AI-powered media literacy for the next generation. Learn to detect misinformation, verify sources, and think critically.
             </p>
-            <div className="flex flex-wrap gap-3 mb-10">
-              <button onClick={onEnter} className="flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+            <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              <button onClick={() => onNavigate("analyzer")} className="w-full max-w-[342px] sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
                 <Search size={18} />
                 Analyze Content
               </button>
-              <button onClick={onEnter} className="flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all hover:-translate-y-0.5 border border-slate-200 text-slate-700 bg-white hover:border-blue-200 hover:text-blue-700">
+              <button onClick={() => onNavigate("learning")} className="w-full max-w-[342px] sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all hover:-translate-y-0.5 border border-slate-200 text-slate-700 bg-white hover:border-blue-200 hover:text-blue-700">
                 <Play size={18} />
                 Start Learning
               </button>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0 max-w-full overflow-hidden">
               <div className="flex -space-x-2">
                 {["AO","KD","ZM","ER"].map(a => (
                   <div key={a} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>{a}</div>
                 ))}
               </div>
-              <p className="text-sm text-slate-500"><span className="font-semibold text-slate-700">98,000+</span> students already verifying smarter</p>
+              <p className="text-sm text-slate-500 min-w-0 leading-snug"><span className="font-semibold text-slate-700">98,000+</span> students already verifying smarter</p>
             </div>
           </div>
 
           {/* Hero illustration */}
-          <div className="relative">
+          <div className="relative hidden sm:block w-full max-w-xl lg:max-w-none mx-auto">
             <div className="bg-white rounded-3xl shadow-2xl p-6 border border-slate-100">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -324,7 +601,7 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
                 </div>
                 <Chip label="AI Verified" color={GREEN} bg={GREEN + "15"} />
               </div>
-              <div className="bg-slate-50 rounded-xl p-3 mb-4 text-xs font-mono text-slate-500 border border-slate-100">
+              <div className="bg-slate-50 rounded-xl p-3 mb-4 text-xs font-mono text-slate-500 border border-slate-100 break-all">
                 https://example-news.com/viral-story-2024
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
@@ -349,14 +626,14 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
             </div>
 
             {/* Floating badges */}
-            <div className="absolute -top-4 -left-4 bg-white rounded-2xl shadow-lg px-3 py-2 border border-slate-100 flex items-center gap-2">
+            <div className="absolute -top-4 left-2 sm:-left-4 bg-white rounded-2xl shadow-lg px-3 py-2 border border-slate-100 flex items-center gap-2">
               <span className="text-lg">🔥</span>
               <div>
                 <p className="text-[10px] text-slate-400">Current Streak</p>
                 <p className="text-sm font-bold text-slate-800">14 Days</p>
               </div>
             </div>
-            <div className="absolute -bottom-4 -right-4 bg-white rounded-2xl shadow-lg px-3 py-2 border border-slate-100 flex items-center gap-2">
+            <div className="absolute -bottom-4 right-2 sm:-right-4 bg-white rounded-2xl shadow-lg px-3 py-2 border border-slate-100 flex items-center gap-2">
               <span className="text-lg">🏅</span>
               <div>
                 <p className="text-[10px] text-slate-400">XP Earned</p>
@@ -467,6 +744,30 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
         </div>
       </section>
 
+      {/* Trust */}
+      <section id="trust" className="py-20 bg-slate-50">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: BLUE }}>Built For Responsible Use</p>
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Clear limits, safer decisions</h2>
+            <p className="text-slate-500 mt-3 max-w-2xl mx-auto">TruthQuest AI is a learning and verification assistant. Scores are guidance, not final proof, and users should confirm important claims with independent sources.</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {[
+              { title: "Human judgment first", body: "Every result includes recommendations so students learn how to verify claims instead of blindly trusting an AI score.", icon: <Brain size={20} /> },
+              { title: "Transparent signals", body: "Credibility, bias, emotion, source reliability, and fact-confidence signals are shown separately for easier review.", icon: <Eye size={20} /> },
+              { title: "Privacy-aware workflow", body: "Uploaded content is used for analysis previews in this demo. Production deployments should document retention and school data policies.", icon: <Shield size={20} /> },
+            ].map((item) => (
+              <div key={item.title} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: BLUE + "12", color: BLUE }}>{item.icon}</div>
+                <h3 className="font-bold text-slate-900 mb-2">{item.title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-20 bg-slate-50">
         <div className="max-w-3xl mx-auto px-6 text-center">
@@ -477,10 +778,10 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
             <h2 className="text-4xl font-extrabold text-slate-900 mb-4">Start your media literacy journey today</h2>
             <p className="text-slate-500 mb-8 text-lg">Free for students. Powerful for schools. Essential for the internet age.</p>
             <div className="flex flex-wrap gap-3 justify-center">
-              <button onClick={onEnter} className="flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+              <button onClick={() => onNavigate("dashboard")} className="flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
                 <Zap size={18} /> Get Started Free
               </button>
-              <button onClick={onEnter} className="flex items-center gap-2 px-8 py-4 rounded-xl font-semibold border border-slate-200 text-slate-700 bg-white hover:border-blue-200 transition-all">
+              <button onClick={() => onNavigate("teacher")} className="flex items-center gap-2 px-8 py-4 rounded-xl font-semibold border border-slate-200 text-slate-700 bg-white hover:border-blue-200 transition-all">
                 <GraduationCap size={18} /> For Schools
               </button>
             </div>
@@ -499,9 +800,9 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
           </div>
           <p className="text-sm">© 2025 TruthQuest AI. Think Before You Share.</p>
           <div className="flex gap-6 text-sm">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
+            <button type="button" onClick={() => onNavigate("privacy")} className="hover:text-white transition-colors">Privacy</button>
+            <button type="button" onClick={() => onNavigate("terms")} className="hover:text-white transition-colors">Terms</button>
+            <a href="mailto:hello@truthquest.ai" className="hover:text-white transition-colors">Contact</a>
           </div>
         </div>
       </footer>
@@ -509,10 +810,58 @@ function LandingPage({ onEnter, bootstrap }: { onEnter: () => void; bootstrap: A
   );
 }
 
+function LegalPage({ type, onNavigate }: { type: "privacy" | "terms"; onNavigate: (screen: Screen) => void }) {
+  const isPrivacy = type === "privacy";
+  const sections = isPrivacy
+    ? [
+      ["Data Use", "TruthQuest AI uses submitted URLs, text, and uploaded media to generate credibility and media-literacy feedback. A production deployment should publish its retention period, school data controls, and subprocessors before launch."],
+      ["Student Safety", "Schools should configure accounts, classroom access, and reporting rules according to local policy. The app should not be used to collect sensitive student information unless a signed data agreement is in place."],
+      ["Contact", "For privacy questions, contact hello@truthquest.ai."],
+    ]
+    : [
+      ["Educational Tool", "TruthQuest AI provides learning-oriented analysis and should not be treated as legal, medical, financial, or definitive factual advice."],
+      ["AI Limitations", "Scores can be wrong. Users are responsible for checking primary sources, publication dates, author credentials, and independent references before making decisions."],
+      ["Acceptable Use", "Do not upload private, harmful, illegal, or non-consensual content. Schools and organizations should define moderation and escalation rules before deployment."],
+    ];
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans">
+      <header className="bg-white border-b border-slate-100">
+        <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+          <button type="button" onClick={() => onNavigate("landing")} className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
+              <Shield size={16} className="text-white" />
+            </div>
+            <span className="font-bold text-slate-900">TruthQuest <span style={{ color: BLUE }}>AI</span></span>
+          </button>
+          <button type="button" onClick={() => onNavigate("dashboard")} className="text-sm font-semibold text-white px-4 py-2 rounded-lg" style={{ background: BLUE }}>
+            Open App
+          </button>
+        </div>
+      </header>
+      <main className="max-w-4xl mx-auto px-6 py-14">
+        <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: BLUE }}>{isPrivacy ? "Privacy" : "Terms"}</p>
+        <h1 className="text-4xl font-extrabold text-slate-900 mb-4">{isPrivacy ? "Privacy Policy" : "Terms of Use"}</h1>
+        <p className="text-slate-500 leading-relaxed mb-8 max-w-2xl">
+          This page is launch-ready placeholder copy for the prototype. Replace it with reviewed legal language before public deployment.
+        </p>
+        <div className="space-y-4">
+          {sections.map(([title, body]) => (
+            <section key={title} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+              <h2 className="font-bold text-slate-900 mb-2">{title}</h2>
+              <p className="text-sm text-slate-600 leading-relaxed">{body}</p>
+            </section>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD LAYOUT
 // ══════════════════════════════════════════════════════════════════════════════
-function AppShell({ screen, setScreen, children }: { screen: Screen; setScreen: (s: Screen) => void; children: React.ReactNode }) {
+function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate: (s: Screen) => void; children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
@@ -533,7 +882,7 @@ function AppShell({ screen, setScreen, children }: { screen: Screen; setScreen: 
           {navItems.map(item => (
             <button
               key={item.label}
-              onClick={() => setScreen(item.screen)}
+              onClick={() => onNavigate(item.screen)}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                 screen === item.screen
@@ -568,16 +917,16 @@ function AppShell({ screen, setScreen, children }: { screen: Screen; setScreen: 
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+            <button aria-label="Toggle sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
               <Menu size={18} />
             </button>
             <div className="relative hidden sm:block">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:border-transparent" style={{ "--tw-ring-color": BLUE } as React.CSSProperties} placeholder="Search articles, topics..." />
+              <input className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:border-transparent" style={{ "--tw-ring-color": BLUE } as React.CSSProperties} placeholder="Search articles, topics..." aria-label="Search articles and topics" />
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 relative">
+            <button aria-label="Notifications" className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 relative">
               <Bell size={18} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: AMBER }} />
             </button>
@@ -753,48 +1102,54 @@ function ContentAnalyzer() {
   const [result, setResult] = useState<null | "done">(null);
   const [analysis, setAnalysis] = useState<ContentAnalysisResponse | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const analyze = async () => {
     const payloadInput = mode === "image" ? imagePreview ?? "" : input;
     if (!payloadInput) {
+      setInputError(mode === "image" ? "Upload an image before analyzing." : "Enter a URL or text before analyzing.");
       setLoading(false);
       return;
     }
 
+    setInputError(null);
+    setAnalysisError(null);
     setLoading(true);
     try {
       const response = await analyzeContent({ mode, input: payloadInput });
       setAnalysis(response);
       setResult("done");
-    } catch {
+    } catch (error) {
       setAnalysis(null);
-      setResult("done");
+      setResult(null);
+      setAnalysisError(error instanceof Error ? error.message : "Content analysis failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const score = analysis?.score ?? 85;
-  const metrics = analysis?.metrics ?? [
-    { label: "Bias Indicator", value: "Low Bias", sub: "Minimal political lean detected" },
-    { label: "Emotional Manipulation", value: "Medium", sub: "Some emotionally charged language" },
-    { label: "Source Reliability", value: "High", sub: "Publisher has verified track record" },
-    { label: "Fact Accuracy", value: "91%", sub: "Claims cross-reference verified data" },
-  ];
-  const recommendations = analysis?.recommendations ?? [
-    { text: "Verify with 1–2 additional independent sources", done: false },
-    { text: "Review author credentials and publication history", done: true },
-    { text: "Check original government data source linked in article", done: false },
-    { text: "Note article publication date: May 2025", done: true },
-  ];
-  const chips = analysis?.chips ?? ["✓ High Source Trust", "⚡ Low Bias", "⚠ Medium Emotion"];
+  const score = analysis?.score ?? 0;
+  const metrics = analysis?.metrics ?? [];
+  const recommendations = analysis?.recommendations ?? [];
+  const chips = analysis?.chips ?? [];
+  const sourceSignals = analysis?.sourceSignals ?? [];
+  const claims = analysis?.claims ?? [];
+  const evidenceSources = analysis?.evidenceSources ?? [];
+  const scoreBreakdown = analysis?.scoreBreakdown ?? [];
+  const statusColor = (status: string) => {
+    if (status === "positive") return GREEN;
+    if (status === "negative") return "#EF4444";
+    if (status === "warning") return AMBER;
+    return BLUE;
+  };
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900">Content Analyzer</h1>
-        <p className="text-slate-500 text-sm mt-1">Paste a URL, text, or upload an image to get an instant credibility report.</p>
+        <p className="text-slate-500 text-sm mt-1">Paste a URL, text, or upload an image to get a transparent credibility report with claims, source signals, and evidence checks.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
@@ -803,7 +1158,7 @@ function ContentAnalyzer() {
           {([["url", <Link size={14} />, "URL"], ["text", <FileText size={14} />, "Text"], ["image", <Image size={14} />, "Image"]] as const).map(([m, icon, label]) => (
             <button
               key={m}
-              onClick={() => { setMode(m as "url" | "text" | "image"); setResult(null); setInput(""); if (m !== "image") setImagePreview(null); }}
+              onClick={() => { setMode(m as "url" | "text" | "image"); setResult(null); setAnalysis(null); setAnalysisError(null); setInput(""); if (m !== "image") setImagePreview(null); }}
               className={cn("flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all", mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}
             >
               {icon} {label}
@@ -830,8 +1185,15 @@ function ContentAnalyzer() {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
+                  setInputError(null);
                   if (!file.type.startsWith("image/")) {
                     setImagePreview(null);
+                    setInputError("Please upload a PNG, JPG, or WEBP image.");
+                    return;
+                  }
+                  if (file.size > 10 * 1024 * 1024) {
+                    setImagePreview(null);
+                    setInputError("Image is too large. Maximum size is 10MB.");
                     return;
                   }
                   const reader = new FileReader();
@@ -852,12 +1214,13 @@ function ContentAnalyzer() {
             </label>
           </div>
         )}
+        {inputError && <p className="mt-3 text-sm text-red-600">{inputError}</p>}
 
         <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-slate-400">Analysis takes 2–5 seconds · Results are AI-generated insights</p>
+          <p className="text-xs text-slate-400">Analysis checks source, claims, language, and available evidence signals</p>
           <button
             onClick={analyze}
-            disabled={loading || (!input && mode !== "image")}
+            disabled={loading || (mode === "image" ? !imagePreview : !input.trim())}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
             style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}
           >
@@ -866,6 +1229,11 @@ function ContentAnalyzer() {
           </button>
         </div>
       </div>
+      {analysisError && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800">
+          <strong className="font-bold">Analysis failed:</strong> {analysisError}
+        </div>
+      )}
 
       {/* Loading state */}
       {loading && (
@@ -873,7 +1241,7 @@ function ContentAnalyzer() {
           <div className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse" style={{ background: `linear-gradient(135deg, ${BLUE}20, ${TEAL}20)` }}>
             <Brain size={28} style={{ color: BLUE }} />
           </div>
-          <p className="font-semibold text-slate-700">AI is analyzing your content…</p>
+          <p className="font-semibold text-slate-700">Checking source and claim signals…</p>
           <div className="w-64 h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div className="h-full rounded-full animate-pulse" style={{ width: "60%", background: `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
           </div>
@@ -889,7 +1257,7 @@ function ContentAnalyzer() {
       )}
 
       {/* Result */}
-      {result === "done" && !loading && (
+      {result === "done" && analysis && !loading && (
         <div className="space-y-4">
           {/* Score row */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
@@ -906,7 +1274,7 @@ function ContentAnalyzer() {
                     {analysis?.sourceUrl}
                   </p>
                 )}
-                <p className="text-sm text-slate-600 mb-4">{analysis?.summary ?? "This content shows strong source credibility with minor areas for verification. The information aligns with verified reporting from established outlets."}</p>
+                <p className="text-sm text-slate-600 mb-4">{analysis.summary}</p>
                 <div className="flex flex-wrap gap-2">
                   {chips.map((chip) => (
                     <Chip
@@ -941,14 +1309,108 @@ function ContentAnalyzer() {
             })}
           </div>
 
+          {/* Transparent scoring */}
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield size={16} style={{ color: TEAL }} />
+                <h4 className="font-bold text-slate-900 text-sm">Source Signals</h4>
+              </div>
+              <div className="space-y-2">
+                {sourceSignals.map((signal) => (
+                  <div key={signal.label} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-700">{signal.label}</p>
+                      <p className="text-xs text-slate-500 break-all">{signal.value}</p>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: statusColor(signal.status) }}>
+                      {signal.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart2 size={16} style={{ color: BLUE }} />
+                <h4 className="font-bold text-slate-900 text-sm">Score Breakdown</h4>
+              </div>
+              <div className="space-y-3">
+                {scoreBreakdown.map((item) => (
+                  <div key={item.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-slate-700">{item.label}</span>
+                      <span className="text-xs font-mono text-slate-500">{item.score}/100 · {item.weight}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${item.score}%`, background: item.score >= 75 ? GREEN : item.score >= 50 ? AMBER : "#EF4444" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Claims and evidence */}
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText size={16} style={{ color: AMBER }} />
+                <h4 className="font-bold text-slate-900 text-sm">Extracted Claims</h4>
+              </div>
+              {claims.length > 0 ? (
+                <div className="space-y-3">
+                  {claims.map((claim) => (
+                    <div key={claim.claim} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <p className="text-xs font-semibold text-slate-800 leading-relaxed">{claim.claim}</p>
+                        <span className="text-xs font-mono text-slate-500 flex-shrink-0">{claim.confidence}%</span>
+                      </div>
+                      <Chip label={claim.status} color={claim.status.includes("Supported") ? GREEN : claim.status.includes("Present") ? AMBER : "#EF4444"} bg={(claim.status.includes("Supported") ? GREEN : claim.status.includes("Present") ? AMBER : "#EF4444") + "15"} />
+                      <p className="text-xs text-slate-500 mt-2 leading-relaxed">{claim.evidence}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No concrete factual claims were extracted from this input.</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <Link size={16} style={{ color: TEAL }} />
+                <h4 className="font-bold text-slate-900 text-sm">Evidence Sources Found</h4>
+              </div>
+              {evidenceSources.length > 0 ? (
+                <div className="space-y-3">
+                  {evidenceSources.map((source) => (
+                    <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-slate-100 bg-slate-50 p-3 hover:border-blue-200 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{source.title}</p>
+                          <p className="text-xs text-slate-500 break-all">{source.url}</p>
+                          <p className="text-xs text-slate-400 mt-1">{source.type}</p>
+                        </div>
+                        <span className="text-xs font-mono text-slate-500 flex-shrink-0">{source.relevance}%</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No trusted outbound or search evidence was detected. Cross-check this manually with independent sources.</p>
+              )}
+            </div>
+          </div>
+
           {/* AI summary + recommendations */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} style={{ color: BLUE }} />
-                <h4 className="font-bold text-blue-900 text-sm">AI Summary</h4>
+                <h4 className="font-bold text-blue-900 text-sm">Credibility Summary</h4>
               </div>
-                <p className="text-sm text-blue-800 leading-relaxed">{analysis?.summary ?? "This article reports on government economic data published by a verified ministry source. The author, Dr. Emeka Osei, is a senior economics correspondent with a 12-year track record at established outlets. The headline accurately reflects the statistical findings without sensationalization. One minor concern: a quoted \"expert\" is not independently verifiable."}</p>
+                <p className="text-sm text-blue-800 leading-relaxed">{analysis.summary}</p>
             </div>
             <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
@@ -993,29 +1455,64 @@ function DeepfakeDetector() {
   const [analyzing, setAnalyzing] = useState(false);
   const [done, setDone] = useState(false);
   const [analysis, setAnalysis] = useState<DeepfakeAnalysisResponse | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const run = async () => {
+    if (!selectedMedia) {
+      setUploadError(`Choose a ${mediaType} file before running detection.`);
+      return;
+    }
     setAnalyzing(true);
+    setDone(false);
+    setAnalysisError(null);
     try {
-      const response = await analyzeDeepfake({ mediaType });
+      const response = await analyzeDeepfake({ mediaType, file: selectedMedia });
       setAnalysis(response);
       setDone(true);
-    } catch {
+    } catch (error) {
       setAnalysis(null);
-      setDone(true);
+      setAnalysisError(error instanceof Error ? error.message : "Deepfake analysis failed. Please try again.");
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const indicators = analysis?.indicators ?? [
-    { label: "Facial Inconsistencies", value: 72, risk: "Medium", color: AMBER },
-    { label: "Lighting Artifacts", value: 85, risk: "High", color: "#EF4444" },
-    { label: "Blinking Pattern", value: 40, risk: "Low", color: GREEN },
-    { label: "Audio Sync Match", value: 88, risk: "High", color: "#EF4444" },
-    { label: "Metadata Integrity", value: 30, risk: "Low", color: GREEN },
-    { label: "AI Generation Probability", value: 78, risk: "High", color: "#EF4444" },
-  ];
+  const indicators = analysis?.indicators ?? [];
+  const riskChip = analysis
+    ? analysis.probability >= 70
+      ? { label: "High Risk", color: "#EF4444", bg: "#FEF2F2" }
+      : analysis.probability >= 45
+        ? { label: "Review Needed", color: AMBER, bg: AMBER + "15" }
+        : { label: "Lower Risk", color: GREEN, bg: GREEN + "15" }
+    : null;
+
+  const maxBytes = mediaType === "video" ? 500 * 1024 * 1024 : mediaType === "audio" ? 50 * 1024 * 1024 : 20 * 1024 * 1024;
+  const accept = mediaType === "video" ? "video/mp4,video/quicktime,video/x-msvideo" : mediaType === "audio" ? "audio/mpeg,audio/wav,audio/mp4" : "image/png,image/jpeg,image/webp";
+  const allowedExtensions = mediaType === "video" ? [".mp4", ".mov", ".avi"] : mediaType === "audio" ? [".mp3", ".wav", ".m4a"] : [".png", ".jpg", ".jpeg", ".webp"];
+
+  const selectMedia = (file: File | undefined) => {
+    setUploadError(null);
+    setAnalysisError(null);
+    setDone(false);
+    setAnalysis(null);
+    if (!file) return;
+    const normalizedName = file.name.toLowerCase();
+    const hasAllowedExtension = allowedExtensions.some((extension) => normalizedName.endsWith(extension));
+    const hasExpectedMime = file.type.startsWith(`${mediaType}/`);
+    if (!hasExpectedMime && !hasAllowedExtension) {
+      setSelectedMedia(null);
+      setUploadError(`Please choose a valid ${mediaType} file.`);
+      return;
+    }
+    if (file.size > maxBytes) {
+      setSelectedMedia(null);
+      setUploadError(`File is too large. Maximum size is ${Math.round(maxBytes / 1024 / 1024)}MB.`);
+      return;
+    }
+    setSelectedMedia(file);
+  };
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -1030,7 +1527,7 @@ function DeepfakeDetector() {
           {([["image", <Image size={16} />, "Image"], ["video", <Video size={16} />, "Video"], ["audio", <Mic size={16} />, "Audio"]] as const).map(([t, icon, label]) => (
             <button
               key={t}
-              onClick={() => { setMediaType(t as "image" | "video" | "audio"); setDone(false); }}
+              onClick={() => { setMediaType(t as "image" | "video" | "audio"); setSelectedMedia(null); setUploadError(null); setAnalysisError(null); setDone(false); setAnalysis(null); }}
               className={cn("flex items-center gap-2 flex-1 justify-center py-3 rounded-xl border-2 font-semibold text-sm transition-all", mediaType === t ? "text-white border-transparent shadow-sm" : "border-slate-200 text-slate-600 hover:border-slate-300")}
               style={mediaType === t ? { background: `linear-gradient(135deg, ${BLUE}, ${TEAL})`, borderColor: "transparent" } : {}}
             >
@@ -1040,46 +1537,60 @@ function DeepfakeDetector() {
         </div>
 
         {/* Upload zone */}
-        <div className="h-52 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-blue-300 transition-colors cursor-pointer group">
+        <label className="h-52 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-blue-300 transition-colors cursor-pointer group">
+          <input
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(event) => selectMedia(event.target.files?.[0])}
+          />
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: `linear-gradient(135deg, ${BLUE}15, ${TEAL}15)` }}>
             <Upload size={24} style={{ color: BLUE }} />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-slate-700 text-sm">Drop {mediaType} here or <span style={{ color: BLUE }}>browse files</span></p>
+            <p className="font-semibold text-slate-700 text-sm">
+              {selectedMedia ? selectedMedia.name : <>Drop {mediaType} here or <span style={{ color: BLUE }}>browse files</span></>}
+            </p>
             <p className="text-xs text-slate-400 mt-1">
               {mediaType === "image" && "PNG, JPG, WEBP up to 20MB"}
               {mediaType === "video" && "MP4, MOV, AVI up to 500MB"}
               {mediaType === "audio" && "MP3, WAV, M4A up to 50MB"}
             </p>
           </div>
-        </div>
+        </label>
+        {uploadError && <p className="mt-3 text-sm text-red-600">{uploadError}</p>}
 
         <div className="flex justify-end mt-4">
-          <button onClick={run} disabled={analyzing} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+          <button onClick={run} disabled={analyzing || !selectedMedia} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
             {analyzing ? <><RefreshCw size={15} className="animate-spin" /> Analyzing…</> : <><Eye size={15} /> Detect Deepfake</>}
           </button>
         </div>
       </div>
+      {analysisError && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-800">
+          <strong className="font-bold">Analysis failed:</strong> {analysisError}
+        </div>
+      )}
 
       {/* Results */}
-      {done && !analyzing && (
+      {done && analysis && !analyzing && (
         <div className="space-y-4">
           {/* Main verdict */}
           <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6">
             <div className="flex flex-wrap items-center gap-6">
               <div className="relative">
-                <ScoreMeter score={analysis?.score ?? 78} size={110} />
+                <ScoreMeter score={analysis.score} size={110} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <AlertTriangle size={20} style={{ color: "#EF4444" }} />
-                  <h3 className="font-bold text-slate-900 text-lg">{analysis?.verdict ?? "Likely AI-Generated or Manipulated"}</h3>
+                  <h3 className="font-bold text-slate-900 text-lg">{analysis.verdict}</h3>
                 </div>
-                <p className="text-sm text-slate-600 mb-4">{analysis?.summary ?? `This ${mediaType} shows significant indicators of synthetic manipulation. Multiple high-confidence signals detected. Exercise extreme caution before sharing this content.`}</p>
+                <p className="text-sm text-slate-600 mb-4">{analysis.summary}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Chip label={analysis?.probabilityLabel ?? "78% AI Probability"} color="#EF4444" bg="#FEF2F2" />
-                  <Chip label="High Risk" color="#EF4444" bg="#FEF2F2" />
-                  <Chip label="Do Not Share" color={AMBER} bg={AMBER + "15"} />
+                  <Chip label={analysis.probabilityLabel} color={riskChip?.color ?? "#EF4444"} bg={riskChip?.bg ?? "#FEF2F2"} />
+                  {riskChip && <Chip label={riskChip.label} color={riskChip.color} bg={riskChip.bg} />}
+                  <Chip label="Verify Before Sharing" color={AMBER} bg={AMBER + "15"} />
                 </div>
               </div>
             </div>
@@ -1111,20 +1622,14 @@ function DeepfakeDetector() {
             <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
               <h4 className="font-bold text-slate-900 text-sm mb-3 flex items-center gap-2"><Hash size={14} style={{ color: TEAL }} /> Metadata Findings</h4>
               <div className="space-y-2 text-xs font-mono text-slate-600">
-                {(analysis?.metadata ?? [
-                  { label: "Creation Date", value: "Modified 2025-11-03" },
-                  { label: "Camera Model", value: "None detected" },
-                  { label: "GPS Data", value: "Stripped" },
-                  { label: "Software", value: "Adobe Firefly 3.1" },
-                  { label: "Color Profile", value: "sRGB (synthetic)" },
-                ]).map((item) => (
+                {analysis.metadata.map((item) => (
                   <div key={item.label} className="flex justify-between"><span className="text-slate-400">{item.label}:</span><span>{item.value}</span></div>
                 ))}
               </div>
             </div>
             <div className="bg-red-50 rounded-2xl p-5 border border-red-100">
               <h4 className="font-bold text-red-900 text-sm mb-3 flex items-center gap-2"><Sparkles size={14} style={{ color: "#EF4444" }} /> AI Analysis</h4>
-              <p className="text-xs text-red-800 leading-relaxed">{analysis?.aiSummary ?? "Strong GAN fingerprints detected in the frequency domain. The Adobe Firefly metadata signature and stripped GPS data are typical of AI-generated synthetic media distributed without geographic attribution. The lighting consistency score of 85% suggests post-synthesis compositing. Do not share without verification."}</p>
+              <p className="text-xs text-red-800 leading-relaxed">{analysis.aiSummary}</p>
             </div>
           </div>
         </div>
@@ -1138,10 +1643,339 @@ function DeepfakeDetector() {
 // ══════════════════════════════════════════════════════════════════════════════
 function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; bootstrap: AppBootstrap | null }) {
   const [view, setView] = useState<"modules" | "leaderboard">("modules");
-  const courses = bootstrap?.learning?.modules
-    ? bootstrap.learning.modules.map((module) => ({ ...module, icon: iconFromName(module.icon) }))
-    : modules.map((module) => ({ ...module, icon: module.icon }));
+  const courses = (bootstrap?.learning?.modules?.length ? bootstrap.learning.modules : modules)
+    .map((module, index) => normalizeLearningModule(module, modules[index] ?? modules[0]));
   const leaderboardData = bootstrap?.learning?.leaderboard ?? leaderboard;
+  const [activeModuleId, setActiveModuleId] = useState<number | null>(null);
+  const [challengeModuleId, setChallengeModuleId] = useState<number | null>(null);
+  const [challengeOrder, setChallengeOrder] = useState<string[]>([]);
+  const [challengeSubmitted, setChallengeSubmitted] = useState(false);
+  const [challengeReflection, setChallengeReflection] = useState("");
+  const [challengeReflectionSubmitted, setChallengeReflectionSubmitted] = useState(false);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const activeModule = courses.find((course) => course.id === activeModuleId);
+  const activeLesson = activeModule ? lessonLibrary[activeModule.title] ?? lessonLibrary["Spot Fake News"] : null;
+  const challengeModule = courses.find((course) => course.id === challengeModuleId);
+  const challengeLesson = challengeModule ? lessonLibrary[challengeModule.title] ?? lessonLibrary["Spot Fake News"] : null;
+
+  useEffect(() => {
+    if (!challengeModule || !challengeLesson) return;
+    setChallengeOrder(shuffleItems(challengeLesson.challenge.items).map((item) => item.id));
+    setChallengeSubmitted(false);
+    setDraggedItemId(null);
+  }, [challengeModuleId]);
+
+  const setChallengeAndOpen = (moduleId: number) => {
+    setActiveModuleId(null);
+    setChallengeModuleId(moduleId);
+    const lesson = lessonLibrary[courses.find((course) => course.id === moduleId)?.title ?? "Spot Fake News"] ?? lessonLibrary["Spot Fake News"];
+    setChallengeOrder(shuffleItems(lesson.challenge.items).map((item) => item.id));
+    setChallengeSubmitted(false);
+    setChallengeReflection("");
+    setChallengeReflectionSubmitted(false);
+    setDraggedItemId(null);
+  };
+
+  const moveChallengeItem = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setChallengeOrder((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  if (challengeModule && challengeLesson) {
+    const orderedItems = challengeOrder
+      .map((id) => challengeLesson.challenge.items.find((item) => item.id === id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const correctOrder = challengeLesson.challenge.items
+      .slice()
+      .sort((a, b) => b.strength - a.strength)
+      .map((item) => item.id);
+    const isCorrect = correctOrder.every((id, index) => orderedItems[index]?.id === id);
+    const topTwo = challengeLesson.challenge.items
+      .slice()
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 2);
+    const reflectionText = challengeReflection.trim().toLowerCase();
+    const reflectionMentionsTopTwo = topTwo.every((item) =>
+      reflectionText.includes(item.label.toLowerCase().split(" ").slice(0, 2).join(" ")) || reflectionText.includes(item.id),
+    );
+    const reflectionHasReason = /(because|since|evidence|primary|source|stronger|original|official|document|study|provenance)/i.test(challengeReflection);
+    const reflectionComplete = challengeReflectionSubmitted && reflectionMentionsTopTwo && reflectionHasReason;
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <button onClick={() => { setChallengeModuleId(null); setChallengeSubmitted(false); setDraggedItemId(null); }} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+          <ChevronLeft size={16} /> Back to Lesson
+        </button>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <div className="flex items-start gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: challengeModule.color + "15", color: challengeModule.color }}>
+              {challengeModule.icon}
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: challengeModule.color }}>Lesson Challenge</p>
+              <h1 className="text-2xl font-extrabold text-slate-900">{challengeModule.title}</h1>
+              <p className="text-sm text-slate-500 mt-1">Drag the evidence cards into the correct order based on the lesson.</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5 mb-5">
+            <p className="font-bold text-slate-900 leading-relaxed">{challengeLesson.challenge.prompt}</p>
+            <p className="text-sm text-slate-500 mt-2">{challengeLesson.challenge.goal}</p>
+          </div>
+
+          <div className="space-y-3">
+            {orderedItems.map((item, index) => (
+              <div
+                key={item.id}
+                draggable
+                onDragStart={() => setDraggedItemId(item.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (!draggedItemId) return;
+                  const fromIndex = challengeOrder.indexOf(draggedItemId);
+                  moveChallengeItem(fromIndex, index);
+                  setDraggedItemId(null);
+                }}
+                onDragEnd={() => setDraggedItemId(null)}
+                className={cn(
+                  "w-full text-left rounded-xl border-2 p-4 text-sm font-semibold transition-colors bg-white cursor-grab active:cursor-grabbing",
+                  challengeSubmitted
+                    ? orderedItems[index]?.id === correctOrder[index]
+                      ? "border-green-400 bg-green-50 text-green-800"
+                      : "border-red-300 bg-red-50 text-red-800"
+                    : "border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50",
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 flex-shrink-0">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.detail}</p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); moveChallengeItem(index, Math.max(0, index - 1)); }}
+                      className="w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      aria-label="Move item up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); moveChallengeItem(index, Math.min(orderedItems.length - 1, index + 1)); }}
+                      className="w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      aria-label="Move item down"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3 justify-between items-center">
+            <p className="text-xs text-slate-500">Drag the cards into the strongest-to-weakest evidence order, then check your rank.</p>
+            <button
+              onClick={() => setChallengeSubmitted(true)}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+              style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}
+            >
+              Check Ranking
+            </button>
+          </div>
+
+          {challengeSubmitted && (
+            <div className={cn("mt-5 rounded-2xl border p-5", isCorrect ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100")}>
+              <h3 className={cn("font-bold text-sm mb-2", isCorrect ? "text-green-900" : "text-amber-900")}>
+                {isCorrect ? "Correct" : "Not quite"}
+              </h3>
+              <p className={cn("text-sm leading-relaxed", isCorrect ? "text-green-800" : "text-amber-800")}>{challengeLesson.challenge.explanation}</p>
+              <div className="mt-4 flex flex-wrap gap-3 justify-end">
+                <button onClick={() => { setChallengeOrder(shuffleItems(challengeLesson.challenge.items).map((item) => item.id)); setChallengeSubmitted(false); }} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors">
+                  Try Again
+                </button>
+              </div>
+            </div>
+          )}
+
+          {challengeSubmitted && isCorrect && (
+            <div className={cn("mt-5 rounded-2xl border p-5", reflectionComplete ? "bg-blue-50 border-blue-100" : "bg-white border-slate-100")}>
+              <h3 className="font-bold text-sm mb-2 text-slate-900">Explain Your Ranking</h3>
+              <p className="text-sm text-slate-500 mb-4">Explain why the top two items are stronger than the rest.</p>
+              <textarea
+                value={challengeReflection}
+                onChange={(event) => {
+                  setChallengeReflection(event.target.value);
+                  setChallengeReflectionSubmitted(false);
+                }}
+                className="w-full min-h-32 resize-none rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:border-transparent"
+                style={{ "--tw-ring-color": BLUE } as React.CSSProperties}
+                placeholder={`Example: ${topTwo[0]?.label} is strongest because...`}
+              />
+              <div className="mt-4 flex flex-wrap gap-3 justify-end">
+                <button onClick={() => setChallengeReflection("")} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors">
+                  Clear
+                </button>
+                <button onClick={() => setChallengeReflectionSubmitted(true)} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+                  Submit Explanation
+                </button>
+              </div>
+              {challengeReflectionSubmitted && (
+                <div className={cn("mt-4 rounded-2xl border p-4", reflectionComplete ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100")}>
+                  <p className={cn("text-sm font-bold mb-1", reflectionComplete ? "text-green-900" : "text-amber-900")}>
+                    {reflectionComplete ? "Good reasoning" : "Needs more detail"}
+                  </p>
+                  <p className={cn("text-sm leading-relaxed", reflectionComplete ? "text-green-800" : "text-amber-800")}>
+                    {reflectionComplete
+                      ? "Your explanation references the strongest evidence and gives a reason for the ranking."
+                      : "Mention the top two items explicitly and explain why they are stronger using evidence words like source, primary, document, study, or provenance."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {challengeSubmitted && reflectionComplete && (
+            <div className="mt-5 flex justify-end">
+              <button onClick={() => { setChallengeModuleId(null); setChallengeSubmitted(false); setChallengeReflection(""); setChallengeReflectionSubmitted(false); setDraggedItemId(null); }} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+                Return to Lesson
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeModule && activeLesson) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <button onClick={() => setActiveModuleId(null)} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+          <ChevronLeft size={16} /> Back to Learning Hub
+        </button>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="h-2" style={{ background: activeModule.completed ? GREEN : activeModule.progress > 0 ? `linear-gradient(90deg, ${BLUE}, ${TEAL})` : activeModule.color }} />
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0" style={{ background: activeModule.color + "15", color: activeModule.color }}>
+                  {activeModule.icon}
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: activeModule.color }}>Interactive Lesson</p>
+                  <h1 className="text-2xl font-extrabold text-slate-900">{activeModule.title}</h1>
+                  <p className="text-sm text-slate-500 mt-1">{activeLesson.objective}</p>
+                </div>
+              </div>
+              <Chip label={`+${activeModule.xp} XP`} color={GREEN} bg={GREEN + "15"} />
+            </div>
+
+            <div className="grid sm:grid-cols-3 gap-3 mb-6">
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-xs text-slate-400">Progress</p>
+                <p className="font-bold text-slate-900">{activeModule.progress}% complete</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-xs text-slate-400">Lessons</p>
+                <p className="font-bold text-slate-900">{activeModule.lessons} short activities</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-xs text-slate-400">Status</p>
+                <p className="font-bold text-slate-900">{activeModule.completed ? "Ready to review" : activeModule.progress > 0 ? "Continue learning" : "Start module"}</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 mb-6">
+              <h2 className="font-bold text-blue-900 text-sm mb-2 flex items-center gap-2"><Brain size={15} /> Key Concept</h2>
+              <p className="text-sm text-blue-800 leading-relaxed">{activeLesson.keyConcept}</p>
+            </div>
+
+            <div className="space-y-4">
+              {activeLesson.sections.map((section, index) => (
+                <div key={section.title} className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white" style={{ background: activeModule.color }}>{index + 1}</div>
+                    <h2 className="font-bold text-slate-900">{section.title}</h2>
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed">{section.body}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4 mt-6">
+              <div className="rounded-2xl bg-white border border-slate-100 p-5">
+                <h3 className="font-bold text-slate-900 text-sm mb-3 flex items-center gap-2"><FileText size={15} style={{ color: activeModule.color }} /> Worked Example</h3>
+                <p className="text-sm font-semibold text-slate-800 leading-relaxed mb-3">{activeLesson.example.scenario}</p>
+                <ul className="space-y-2">
+                  {activeLesson.example.breakdown.map((step) => (
+                    <li key={step} className="flex items-start gap-2 text-sm text-slate-600">
+                      <CheckCircle size={14} style={{ color: activeModule.color }} className="mt-0.5 flex-shrink-0" />
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl bg-amber-50 border border-amber-100 p-5">
+                <h3 className="font-bold text-amber-900 text-sm mb-2 flex items-center gap-2"><AlertTriangle size={15} /> Common Mistake</h3>
+                <p className="text-sm text-amber-800 leading-relaxed mb-4">{activeLesson.commonMistake}</p>
+                <h3 className="font-bold text-amber-900 text-sm mb-2 flex items-center gap-2"><MessageSquare size={15} /> Reflection</h3>
+                <p className="text-sm text-amber-800 leading-relaxed">{activeLesson.reflection}</p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4 mt-6">
+              <div className="rounded-2xl bg-blue-50 border border-blue-100 p-5">
+                <h3 className="font-bold text-blue-900 text-sm mb-2 flex items-center gap-2"><Target size={15} /> Practice Task</h3>
+                <p className="text-sm text-blue-800 leading-relaxed">{activeLesson.practice}</p>
+              </div>
+              <div className="rounded-2xl bg-white border border-slate-100 p-5">
+                <h3 className="font-bold text-slate-900 text-sm mb-3 flex items-center gap-2"><CheckCircle size={15} style={{ color: GREEN }} /> Verification Checklist</h3>
+                <ul className="space-y-2">
+                  {activeLesson.checklist.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm text-slate-600">
+                      <CheckCircle size={14} style={{ color: GREEN }} className="mt-0.5 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5 mt-6">
+              <h3 className="font-bold text-slate-900 text-sm mb-3 flex items-center gap-2"><BookOpen size={15} style={{ color: activeModule.color }} /> Key Vocabulary</h3>
+              <div className="grid md:grid-cols-3 gap-3">
+                {activeLesson.vocabulary.map((item) => (
+                  <div key={item.term} className="rounded-xl bg-white border border-slate-100 p-3">
+                    <p className="font-bold text-slate-900 text-sm">{item.term}</p>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-1">{item.definition}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3 justify-end">
+              <button onClick={() => setActiveModuleId(null)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                Choose Another Lesson
+              </button>
+              <button onClick={() => setChallengeAndOpen(activeModule.id)} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+                Take Challenge <ChevronRight size={14} className="inline ml-1" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -1176,7 +2010,7 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
       {view === "modules" ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {courses.map(m => (
-            <div key={m.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow group cursor-pointer" onClick={() => setScreen("quiz")}>
+            <div key={m.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow group cursor-pointer" onClick={() => setActiveModuleId(m.id)}>
               <div className="h-2" style={{ background: m.completed ? GREEN : m.progress > 0 ? `linear-gradient(90deg, ${BLUE}, ${TEAL})` : "#E2E8F0" }} />
               <div className="p-5">
                 <div className="flex items-start justify-between mb-3">
@@ -1195,8 +2029,8 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-400">{m.progress}% complete</span>
-                  <button className="text-xs font-semibold flex items-center gap-1 group-hover:gap-2 transition-all" style={{ color: m.completed ? GREEN : BLUE }}>
-                    {m.completed ? "Review" : m.progress > 0 ? "Continue" : "Start"} <ChevronRight size={12} />
+                  <button onClick={(event) => { event.stopPropagation(); setActiveModuleId(m.id); }} className="text-xs font-semibold flex items-center gap-1 group-hover:gap-2 transition-all" style={{ color: m.completed ? GREEN : BLUE }}>
+                    {m.completed ? "Review Lesson" : m.progress > 0 ? "Continue Lesson" : "Start Lesson"} <ChevronRight size={12} />
                   </button>
                 </div>
               </div>
@@ -1475,6 +2309,7 @@ function StudentProfile({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 // TEACHER DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
+  const [studentQuery, setStudentQuery] = useState("");
   const classPerformance = bootstrap?.teacher?.classPerformance ?? weeklyData.map(d => ({ name: d.day, average: d.score }));
   const skillDistribution = bootstrap?.teacher?.skillDistribution ?? [
     { name: "Fact Checking", value: 85 },
@@ -1495,6 +2330,9 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
     { id: 5, name: "Emma Wilson", level: 8, xp: 1750, score: 82, streak: 3, lessons: 10, status: "average" },
     { id: 6, name: "Oliver Brown", level: 6, xp: 980, score: 65, streak: 1, lessons: 7, status: "needs-attention" },
   ];
+  const visibleStudents = students.filter((student) =>
+    student.name.toLowerCase().includes(studentQuery.trim().toLowerCase()),
+  );
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1503,10 +2341,10 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
           <p className="text-slate-500 text-sm mt-1">Media Studies 101 · Ms. Adaeze Nwosu · Lagos Secondary School</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+          <button disabled title="Report export is not available in this preview" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-400 bg-white cursor-not-allowed">
             <FileText size={15} /> Export Report
           </button>
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+          <button disabled title="Challenge assignment is not available in this preview" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white opacity-60 cursor-not-allowed" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
             <Zap size={15} /> Assign Challenge
           </button>
         </div>
@@ -1559,7 +2397,7 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-900">Student Performance</h3>
           <div className="flex items-center gap-2">
-            <input className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none" placeholder="Search students…" />
+            <input value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none" placeholder="Search students…" aria-label="Search students" />
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -1574,7 +2412,7 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {students.map(s => (
+              {visibleStudents.map(s => (
                 <tr key={s.name} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -1625,6 +2463,7 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
   const [analysis, setAnalysis] = useState<ContentAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mInput, setMInput] = useState("");
+  const [mobileQuizAnswer, setMobileQuizAnswer] = useState<number | null>(null);
 
   const tabs = [
     { id: "home", icon: <Home size={20} />, label: "Home" },
@@ -1715,11 +2554,11 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { icon: <Search size={18} />, label: "Analyze", color: BLUE, action: () => setActiveTab("analyze") },
-                    { icon: <Shield size={18} />, label: "Deepfake", color: TEAL, action: () => {} },
+                    { icon: <Shield size={18} />, label: "Deepfake", color: TEAL, action: undefined },
                     { icon: <BookOpen size={18} />, label: "Learn", color: PURPLE, action: () => setActiveTab("learn") },
                     { icon: <Trophy size={18} />, label: "Challenge", color: AMBER, action: () => setActiveTab("quiz") },
                   ].map(a => (
-                    <button key={a.label} onClick={a.action} className="flex items-center gap-2 p-3 rounded-xl border border-slate-100 bg-white text-sm font-semibold text-slate-700 hover:border-blue-200 transition-colors">
+                    <button key={a.label} onClick={a.action} disabled={!a.action} title={!a.action ? "Deepfake preview is available in the desktop sidebar" : undefined} className={cn("flex items-center gap-2 p-3 rounded-xl border border-slate-100 bg-white text-sm font-semibold text-slate-700 transition-colors", a.action ? "hover:border-blue-200" : "opacity-60 cursor-not-allowed")}>
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: a.color + "15" }}>
                         <div style={{ color: a.color }}>{a.icon}</div>
                       </div>
@@ -1836,13 +2675,23 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
                   </div>
                   <p className="text-sm font-semibold text-slate-900 mb-4">{quizQuestions[0].question}</p>
                   <div className="space-y-2">
-                    {quizQuestions[0].options.map((opt, i) => (
-                      <button key={i} className="w-full flex items-center gap-3 p-3 rounded-lg border-2 border-slate-200 text-left text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                    {quizQuestions[0].options.map((opt, i) => {
+                      const answered = mobileQuizAnswer !== null;
+                      const isCorrect = i === quizQuestions[0].correct;
+                      const isSelected = i === mobileQuizAnswer;
+                      return (
+                      <button key={i} onClick={() => setMobileQuizAnswer(i)} disabled={answered} className={cn("w-full flex items-center gap-3 p-3 rounded-lg border-2 text-left text-xs font-medium transition-colors", answered && isCorrect ? "border-green-400 bg-green-50 text-green-800" : answered && isSelected ? "border-red-400 bg-red-50 text-red-800" : "border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50")}>
                         <span className="w-6 h-6 rounded-full border-2 border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-500 flex-shrink-0">{String.fromCharCode(65 + i)}</span>
                         {opt}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
+                  {mobileQuizAnswer !== null && (
+                    <div className="mt-3 rounded-lg bg-blue-50 border border-blue-100 p-3">
+                      <p className="text-xs text-blue-800">{quizQuestions[0].explanation}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1909,27 +2758,60 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 // ROOT APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("landing");
+  const [screen, setScreen] = useState<Screen>(() => screenFromPath(window.location.pathname));
   const { data: bootstrap } = useTruthQuestBootstrap();
 
-  if (screen === "landing") return <LandingPage onEnter={() => setScreen("dashboard")} bootstrap={bootstrap} />;
+  useEffect(() => {
+    const onPopState = () => setScreen(screenFromPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    const titles: Record<Screen, string> = {
+      landing: "TruthQuest AI | AI-Powered Media Literacy",
+      dashboard: "Dashboard | TruthQuest AI",
+      analyzer: "Content Analyzer | TruthQuest AI",
+      deepfake: "Deepfake Detector | TruthQuest AI",
+      learning: "Learning Hub | TruthQuest AI",
+      quiz: "Media Literacy Challenge | TruthQuest AI",
+      profile: "Profile | TruthQuest AI",
+      teacher: "Teacher Dashboard | TruthQuest AI",
+      mobile: "Mobile App Preview | TruthQuest AI",
+      privacy: "Privacy Policy | TruthQuest AI",
+      terms: "Terms of Use | TruthQuest AI",
+    };
+    document.title = titles[screen];
+  }, [screen]);
+
+  const navigate = (nextScreen: Screen) => {
+    const nextPath = screenPaths[nextScreen];
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, "", nextPath);
+    }
+    setScreen(nextScreen);
+  };
+
+  if (screen === "landing") return <LandingPage onNavigate={navigate} bootstrap={bootstrap} />;
+  if (screen === "privacy") return <LegalPage type="privacy" onNavigate={navigate} />;
+  if (screen === "terms") return <LegalPage type="terms" onNavigate={navigate} />;
 
   const content = (() => {
     switch (screen) {
-      case "dashboard": return <Dashboard setScreen={setScreen} bootstrap={bootstrap} />;
+      case "dashboard": return <Dashboard setScreen={navigate} bootstrap={bootstrap} />;
       case "analyzer": return <ContentAnalyzer />;
       case "deepfake": return <DeepfakeDetector />;
-      case "learning": return <LearningHub setScreen={setScreen} bootstrap={bootstrap} />;
+      case "learning": return <LearningHub setScreen={navigate} bootstrap={bootstrap} />;
       case "quiz": return <QuizScreen bootstrap={bootstrap} />;
       case "profile": return <StudentProfile bootstrap={bootstrap} />;
       case "teacher": return <TeacherDashboard bootstrap={bootstrap} />;
       case "mobile": return <MobileView bootstrap={bootstrap} />;
-      default: return <Dashboard setScreen={setScreen} bootstrap={bootstrap} />;
+      default: return <Dashboard setScreen={navigate} bootstrap={bootstrap} />;
     }
   })();
 
   return (
-    <AppShell screen={screen} setScreen={setScreen}>
+    <AppShell screen={screen} onNavigate={navigate}>
       {content}
     </AppShell>
   );

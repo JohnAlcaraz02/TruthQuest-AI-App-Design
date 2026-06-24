@@ -30,6 +30,18 @@
 
   The frontend can point `VITE_API_BASE_URL` at `http://localhost:8000`.
 
+  ### Credibility evidence search
+
+  The content analyzer uses free, no-key evidence sources when the backend has network access:
+
+  - Wikipedia page search
+  - Crossref scholarly metadata
+  - PubMed / NCBI E-utilities
+  - arXiv Atom API
+  - GDELT document search
+
+  `POST /api/v1/content/analyze` searches extracted claims, excludes the original source domain, and labels claims as independently supported, partially supported, source-only, or needing evidence. No paid search API is required.
+
   ## Backend API contract
 
   The app now expects a backend at `VITE_API_BASE_URL` that serves these endpoints:
@@ -38,9 +50,9 @@
     - Returns the screen data used by landing, dashboard, learning, quiz, profile, teacher, and mobile screens.
   - `POST /api/v1/content/analyze`
     - Body: `{ "mode": "url" | "text" | "image", "input": string }`
-    - Returns: score, summary, chips, metrics, recommendations, and XP earned.
+    - Returns: score, summary, chips, metrics, recommendations, source signals, extracted claims, evidence sources, score breakdown, and XP earned.
   - `POST /api/v1/deepfake/analyze`
-    - Body: `{ "mediaType": "image" | "video" | "audio" }`
+    - Body: multipart form data with `media_type` and `file`.
     - Returns: verdict, probability, indicators, metadata, and AI summary.
 
   If `VITE_API_BASE_URL` is not set, the app will try to call the same origin.

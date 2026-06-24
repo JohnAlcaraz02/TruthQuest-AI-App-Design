@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 
 ContentAnalysisMode = Literal["url", "text", "image"]
-DeepfakeMediaType = Literal["image", "video", "audio"]
 
 
 class LandingFeature(BaseModel):
@@ -119,6 +118,32 @@ class ContentRecommendation(BaseModel):
     done: bool
 
 
+class ContentSourceSignal(BaseModel):
+    label: str
+    value: str
+    status: str
+
+
+class ContentClaim(BaseModel):
+    claim: str
+    status: str
+    confidence: int
+    evidence: str
+
+
+class ContentEvidenceSource(BaseModel):
+    title: str
+    url: str
+    type: str
+    relevance: int
+
+
+class ContentScoreBreakdown(BaseModel):
+    label: str
+    score: int
+    weight: int
+
+
 class ContentAnalysisResponse(BaseModel):
     analysisId: str
     sourceUrl: str
@@ -133,11 +158,11 @@ class ContentAnalysisResponse(BaseModel):
     chips: list[str]
     metrics: list[ContentMetric]
     recommendations: list[ContentRecommendation]
+    sourceSignals: list[ContentSourceSignal] = []
+    claims: list[ContentClaim] = []
+    evidenceSources: list[ContentEvidenceSource] = []
+    scoreBreakdown: list[ContentScoreBreakdown] = []
     xpEarned: int
-
-
-class DeepfakeAnalyzeRequest(BaseModel):
-    mediaType: DeepfakeMediaType
 
 
 class DeepfakeIndicator(BaseModel):

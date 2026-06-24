@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .schemas import (
     ContentAnalyzeRequest,
     ContentAnalysisResponse,
-    DeepfakeAnalyzeRequest,
     DeepfakeAnalysisResponse,
 )
 from .analysis import (
@@ -43,8 +42,19 @@ def analyze_content(payload: ContentAnalyzeRequest) -> ContentAnalysisResponse:
 
 
 @app.post("/api/v1/deepfake/analyze", response_model=DeepfakeAnalysisResponse)
-def analyze_deepfake(payload: DeepfakeAnalyzeRequest) -> DeepfakeAnalysisResponse:
-    result = build_deepfake_analysis_response()
+async def analyze_deepfake(
+    media_type: str = Form(...),
+    file: UploadFile = File(...),
+) -> DeepfakeAnalysisResponse:
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    result = build_deepfake_analysis_response(
+        media_type=media_type,
+        filename=file.filename or "upload",
+        content_type=file.content_type or "",
+        data=contents,
+    )
     return DeepfakeAnalysisResponse(**result)
 
 
