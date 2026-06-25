@@ -42,6 +42,22 @@
 
   `POST /api/v1/content/analyze` searches extracted claims, excludes the original source domain, and labels claims as independently supported, partially supported, source-only, or needing evidence. No paid search API is required.
 
+  ### Optional local OCR for image posts
+
+  Image uploads are analyzed locally for file signature, dimensions, hash, entropy, and embedded generator markers. If the free `tesseract` command-line tool is installed, the backend also extracts text from memes/screenshots and runs that text through the same claim analyzer.
+
+  macOS:
+
+  ```bash
+  brew install tesseract
+  ```
+
+  Ubuntu/Debian:
+
+  ```bash
+  sudo apt-get install tesseract-ocr
+  ```
+
   ## Backend API contract
 
   The app now expects a backend at `VITE_API_BASE_URL` that serves these endpoints:

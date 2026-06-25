@@ -3,9 +3,14 @@ from __future__ import annotations
 import logging
 import re
 import ssl
+import base64
+import binascii
 import hashlib
 import json
 import struct
+import shutil
+import subprocess
+import tempfile
 from html import unescape
 from pathlib import Path
 from urllib.parse import quote, quote_plus, urljoin, urlparse
@@ -279,6 +284,14 @@ def _evidence_result(title: str, url: str, source_type: str, relevance: int, sni
     }
 
 
+def _evidence_label(source_type: str, relevance: int) -> str:
+    if relevance >= 78:
+        return f"Possible corroborating source · {source_type}"
+    if relevance >= 65:
+        return f"Related source to review · {source_type}"
+    return f"Background only · {source_type}"
+
+
 def _search_wikipedia(claim: str) -> list[dict[str, object]]:
     payload = _fetch_json(f"https://en.wikipedia.org/w/rest.php/v1/search/page?q={quote_plus(claim[:180])}&limit=3")
     results: list[dict[str, object]] = []
@@ -286,7 +299,7 @@ def _search_wikipedia(claim: str) -> list[dict[str, object]]:
         title = str(item.get("title") or "")
         excerpt = _clean_html_text(str(item.get("excerpt") or ""))
         url = f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}"
-        relevance = max(45, min(82, _claim_overlap_score(claim, f"{title} {excerpt}") + 25))
+        relevance = min(82, _claim_overlap_score(claim, f"{title} {excerpt}") + 15)
         results.append(_evidence_result(title, url, "Wikipedia background source", relevance, excerpt))
     return results
 
@@ -300,7 +313,7 @@ def _search_crossref(claim: str) -> list[dict[str, object]]:
         url = str(item.get("URL") or f"https://doi.org/{item.get('DOI', '')}")
         journal_values = item.get("container-title") or []
         journal = str(journal_values[0] if journal_values else "Scholarly metadata")
-        relevance = max(50, min(88, _claim_overlap_score(claim, f"{title} {journal}") + 30))
+        relevance = min(88, _claim_overlap_score(claim, f"{title} {journal}") + 18)
         results.append(_evidence_result(title, url, "Crossref scholarly metadata", relevance, journal))
     return results
 
@@ -323,7 +336,7 @@ def _search_pubmed(claim: str) -> list[dict[str, object]]:
         title = str(item.get("title") or f"PubMed record {pmid}")
         journal = str(item.get("fulljournalname") or item.get("source") or "PubMed")
         url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-        relevance = max(55, min(92, _claim_overlap_score(claim, f"{title} {journal}") + 35))
+        relevance = min(92, _claim_overlap_score(claim, f"{title} {journal}") + 22)
         results.append(_evidence_result(title, url, "PubMed biomedical literature", relevance, journal))
     return results
 
@@ -343,7 +356,7 @@ def _search_arxiv(claim: str) -> list[dict[str, object]]:
         summary = _clean_html_text(re.search(r"(?is)<summary>(.*?)</summary>", entry).group(1)) if re.search(r"(?is)<summary>(.*?)</summary>", entry) else ""
         link_match = re.search(r'(?is)<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']alternate["\']', entry)
         url = link_match.group(1) if link_match else "https://arxiv.org"
-        relevance = max(50, min(88, _claim_overlap_score(claim, f"{title} {summary}") + 30))
+        relevance = min(88, _claim_overlap_score(claim, f"{title} {summary}") + 18)
         results.append(_evidence_result(title, url, "arXiv research preprint", relevance, summary))
     return results
 
@@ -360,7 +373,7 @@ def _search_gdelt(claim: str) -> list[dict[str, object]]:
         if not url:
             continue
         snippet = str(item.get("seendate") or item.get("sourcecountry") or "GDELT indexed news article")
-        relevance = max(45, min(82, _claim_overlap_score(claim, f"{title} {snippet}") + 25))
+        relevance = min(82, _claim_overlap_score(claim, f"{title} {snippet}") + 15)
         results.append(_evidence_result(title, url, "GDELT news/event index", relevance, snippet))
     return results
 
@@ -394,8 +407,11 @@ def _search_evidence_sources(claims: list[str], source_domain: str) -> tuple[lis
                 domain = _domain_from_url(url)
                 if not url or domain == source_domain or url in seen_urls:
                     continue
+                if int(result.get("relevance") or 0) < 60:
+                    continue
                 seen_urls.add(url)
                 evidence_text_parts.append(f"{result.get('title', '')}. {result.pop('_snippet', '')}")
+                result["type"] = _evidence_label(str(result.get("type") or "Evidence source"), int(result.get("relevance") or 0))
                 found.append(result)
                 if len(found) >= 8:
                     return found, " ".join(evidence_text_parts), "Free evidence search completed"
@@ -419,11 +435,11 @@ def _build_claim_reports(
     for claim in claims:
         source_overlap = _claim_overlap_score(claim, source_context_text)
         independent_overlap = _claim_overlap_score(claim, independent_evidence_text)
-        if independent_overlap >= 65:
+        if independent_overlap >= 80:
             status = "Supported by independent evidence"
             confidence = min(95, round(independent_overlap * 0.7 + source_score * 0.3))
             evidence = "Independent search results contain strong overlap with this claim."
-        elif independent_overlap >= 40:
+        elif independent_overlap >= 55:
             status = "Partially supported by independent evidence"
             confidence = min(82, round(independent_overlap * 0.7 + source_score * 0.3))
             evidence = "Independent search results contain partial overlap. Manual verification is still recommended."
@@ -787,6 +803,9 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
             "xpEarned": 0,
         }
 
+    if mode == "image":
+        return _build_image_content_analysis_response(analyzed_text)
+
     fetched = False
     source_title = ""
     source_excerpt = ""
@@ -1011,6 +1030,231 @@ def _synthetic_markers(data: bytes) -> list[str]:
         if any(needle in sample for needle in needles):
             found.append(label)
     return found
+
+
+def _decode_image_data_url(value: str) -> tuple[bytes, str]:
+    header = ""
+    payload = value.strip()
+    if payload.startswith("data:"):
+        header, _, payload = payload.partition(",")
+    try:
+        data = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("Image input is not valid base64 data.") from error
+    mime = "image/unknown"
+    if header:
+        mime = header.removeprefix("data:").split(";", 1)[0] or mime
+    return data, mime
+
+
+def _byte_entropy(data: bytes, limit: int = 1_000_000) -> float:
+    sample = data[:limit]
+    if not sample:
+        return 0.0
+    counts = [0] * 256
+    for byte in sample:
+        counts[byte] += 1
+    length = len(sample)
+    # Avoid importing a heavy image stack; use log2 directly for byte distribution.
+    import math
+    entropy = 0.0
+    for count in counts:
+        if count:
+            probability = count / length
+            entropy -= probability * math.log2(probability)
+    return round(entropy, 2)
+
+
+def _run_local_ocr(data: bytes, detected_label: str) -> tuple[str, str]:
+    tesseract_path = shutil.which("tesseract")
+    if not tesseract_path:
+        return "", "Tesseract OCR is not installed on this machine."
+    suffix = ".png"
+    if "JPEG" in detected_label:
+        suffix = ".jpg"
+    elif "WebP" in detected_label:
+        suffix = ".webp"
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as image_file:
+            image_file.write(data)
+            image_file.flush()
+            completed = subprocess.run(
+                [tesseract_path, image_file.name, "stdout", "--psm", "6"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=12,
+            )
+    except (OSError, subprocess.SubprocessError, TimeoutError) as error:
+        return "", f"OCR failed: {str(error)[:120]}"
+    if completed.returncode != 0:
+        detail = (completed.stderr or "OCR returned no text").strip()
+        return "", f"OCR unavailable: {detail[:120]}"
+    text = re.sub(r"\s+", " ", completed.stdout).strip()
+    return text[:3000], "OCR completed" if text else "OCR completed but found no readable text."
+
+
+def _build_image_content_analysis_response(user_input: str) -> dict:
+    try:
+        data, browser_mime = _decode_image_data_url(user_input)
+    except ValueError as error:
+        return {
+            "analysisId": str(uuid4()),
+            "sourceUrl": "",
+            "sourceTitle": "Uploaded image",
+            "sourceExcerpt": "Invalid image upload",
+            "score": 18,
+            "biasLabel": "High Risk",
+            "emotionLabel": "Unknown",
+            "reliabilityLabel": "Low",
+            "factAccuracy": "18%",
+            "summary": str(error),
+            "chips": ["⚠ Invalid image", "⚠ Cannot inspect file"],
+            "metrics": [
+                {"label": "File Integrity", "value": "Invalid", "sub": "Base64 decode failed"},
+                {"label": "Visual Metadata", "value": "Unavailable", "sub": "No image bytes available"},
+                {"label": "Provenance", "value": "Unknown", "sub": "Cannot verify upload"},
+                {"label": "Share Risk", "value": "High", "sub": "Do not rely on this upload"},
+            ],
+            "recommendations": [{"text": "Upload a PNG, JPG, or WEBP image file and try again.", "done": False}],
+            "sourceSignals": [],
+            "claims": [],
+            "evidenceSources": [],
+            "scoreBreakdown": [],
+            "xpEarned": 0,
+        }
+
+    detected_type, detected_label = _detect_file_kind(data)
+    dimensions = _image_dimensions(data) if detected_type == "image" else None
+    markers = _synthetic_markers(data)
+    ocr_text, ocr_status = _run_local_ocr(data, detected_label) if detected_type == "image" else ("", "OCR skipped because the file is not a supported image.")
+    entropy = _byte_entropy(data)
+    file_size = len(data)
+    sha256 = hashlib.sha256(data).hexdigest()
+    megapixels = round((dimensions[0] * dimensions[1]) / 1_000_000, 2) if dimensions else 0
+    mime_match = browser_mime.startswith("image/") and detected_type == "image"
+    has_dimensions = dimensions is not None
+    too_small = file_size < 4 * 1024
+    huge_image = megapixels >= 20
+
+    integrity_score = 88 if mime_match else 36 if detected_type == "unknown" else 48
+    structure_score = 86 if has_dimensions else 42
+    provenance_score = 38 if markers else 62
+    quality_score = 45 if too_small else 68 if huge_image else 78
+    metadata_score = max(20, min(92, round((integrity_score + structure_score + provenance_score + quality_score) / 4)))
+    score = metadata_score
+
+    dimension_value = f"{dimensions[0]} x {dimensions[1]} ({megapixels} MP)" if dimensions else "Unavailable"
+    marker_value = ", ".join(markers) if markers else "None found"
+    summary_parts = [
+        f"TruthQuest inspected the uploaded image bytes as a {detected_label}.",
+        f"It measured {dimension_value}, {_format_bytes(file_size)}, byte entropy {entropy}/8, and SHA-256 fingerprint {sha256[:16]}...",
+    ]
+    if markers:
+        summary_parts.append(f"Embedded generator/provenance markers were found: {marker_value}.")
+    if not has_dimensions:
+        summary_parts.append("Dimensions could not be parsed, so the image needs manual review.")
+    if detected_type != "image":
+        summary_parts.append("The upload does not look like a supported image file based on its binary signature.")
+    if detected_type == "image" and not markers and has_dimensions:
+        summary_parts.append("No embedded AI-generator markers were found, but this does not prove the image is authentic.")
+    if ocr_text:
+        summary_parts.append(f"OCR extracted readable text: {ocr_text[:220]}")
+    else:
+        summary_parts.append(ocr_status)
+
+    source_signals = [
+        {"label": "Browser MIME Type", "value": browser_mime or "Unavailable", "status": "positive" if browser_mime.startswith("image/") else "warning"},
+        {"label": "Binary Signature", "value": detected_label, "status": "positive" if detected_type == "image" else "negative"},
+        {"label": "Dimensions", "value": dimension_value, "status": "positive" if has_dimensions else "warning"},
+        {"label": "File Size", "value": _format_bytes(file_size), "status": "warning" if too_small else "positive"},
+        {"label": "OCR Text", "value": ocr_text[:180] if ocr_text else ocr_status, "status": "positive" if ocr_text else "warning"},
+        {"label": "Embedded Generator Markers", "value": marker_value, "status": "warning" if markers else "neutral"},
+        {"label": "SHA-256 Fingerprint", "value": f"{sha256[:32]}...", "status": "neutral"},
+    ]
+
+    claims = [
+        {
+            "claim": "Uploaded image file integrity and provenance",
+            "status": "Generator markers found" if markers else "No embedded generator markers found",
+            "confidence": 72 if markers else 58,
+            "evidence": "This is based on binary signature, parsed dimensions, embedded metadata strings, file size, entropy, and hash. It is not a visual fact-check of what the image depicts.",
+        }
+    ]
+    if not has_dimensions or detected_type != "image":
+        claims.append({
+            "claim": "Uploaded file is a valid supported image",
+            "status": "Needs manual review",
+            "confidence": 35,
+            "evidence": "The server could not parse expected dimensions or image signature data.",
+        })
+    ocr_claim_reports: list[dict[str, object]] = []
+    ocr_evidence_sources: list[dict[str, object]] = []
+    if ocr_text:
+        ocr_claims = _extract_claims(ocr_text)
+        searched_sources, searched_text, search_status = _search_evidence_sources(ocr_claims, "")
+        ocr_claim_reports = _build_claim_reports(ocr_claims, ocr_text, searched_text, 50, False)
+        ocr_evidence_sources = searched_sources
+        claims.extend({
+            **report,
+            "claim": f"OCR text claim: {report['claim']}",
+            "evidence": f"{report['evidence']} OCR evidence search: {search_status}",
+        } for report in ocr_claim_reports)
+        if ocr_claim_reports:
+            ocr_score = round(sum(int(report["confidence"]) for report in ocr_claim_reports) / len(ocr_claim_reports))
+            score = round(score * 0.6 + ocr_score * 0.4)
+        else:
+            ocr_score = 45
+    else:
+        ocr_score = 35 if "not installed" in ocr_status else 45
+
+    recommendations = [
+        {"text": "Use reverse image search to check whether this image appeared earlier in a different context.", "done": False},
+        {"text": "Ask for the original source, capture date, and uncropped version before sharing.", "done": False},
+        {"text": "Run the same file through Deepfake Detector for manipulation-risk scoring.", "done": False},
+    ]
+    if ocr_text:
+        recommendations.insert(0, {"text": "Verify the extracted OCR text as a separate claim before sharing the image.", "done": False})
+    elif "not installed" in ocr_status:
+        recommendations.append({"text": "Install Tesseract locally to extract text from memes, screenshots, and image posts.", "done": False})
+
+    return {
+        "analysisId": str(uuid4()),
+        "sourceUrl": "",
+        "sourceTitle": "Uploaded image forensic report",
+        "sourceExcerpt": f"{detected_label} · {dimension_value} · {_format_bytes(file_size)}",
+        "score": score,
+        "biasLabel": "Image Metadata",
+        "emotionLabel": "N/A",
+        "reliabilityLabel": _reliability_label(score),
+        "factAccuracy": f"{score}%",
+        "summary": " ".join(summary_parts),
+        "chips": [
+            "✓ Local image analysis",
+            "✓ Image bytes inspected",
+            "✓ OCR text found" if ocr_text else "⚠ OCR unavailable",
+            f"✓ {detected_label}",
+            "⚠ Generator markers" if markers else "✓ No generator markers",
+        ],
+        "metrics": [
+            {"label": "File Integrity", "value": "Valid" if detected_type == "image" else "Invalid", "sub": f"Signature: {detected_label}"},
+            {"label": "OCR Text", "value": "Found" if ocr_text else "Unavailable", "sub": ocr_text[:80] if ocr_text else ocr_status},
+            {"label": "Visual Metadata", "value": dimension_value, "sub": f"Size: {_format_bytes(file_size)}"},
+            {"label": "Provenance", "value": "Generator marker found" if markers else "No marker found", "sub": marker_value},
+        ],
+        "recommendations": recommendations,
+        "sourceSignals": source_signals,
+        "claims": claims,
+        "evidenceSources": ocr_evidence_sources,
+        "scoreBreakdown": [
+            {"label": "File Signature", "score": integrity_score, "weight": 30},
+            {"label": "Dimension Parsing", "score": structure_score, "weight": 25},
+            {"label": "Provenance Metadata", "score": provenance_score, "weight": 20},
+            {"label": "OCR Text Claims", "score": ocr_score, "weight": 15},
+            {"label": "File Quality", "score": quality_score, "weight": 10},
+        ],
+        "xpEarned": 25 if score >= 70 else 15,
+    }
 
 
 def build_deepfake_analysis_response(

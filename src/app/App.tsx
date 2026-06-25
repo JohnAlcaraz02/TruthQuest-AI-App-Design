@@ -16,17 +16,25 @@ import {
 import {
   analyzeContent,
   analyzeDeepfake,
+  checkBackendHealth,
   useTruthQuestBootstrap,
   type AppBootstrap,
   type ContentAnalysisResponse,
   type DeepfakeAnalysisResponse,
 } from "./services/truthquestApi";
+import confetti from "canvas-confetti";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Screen =
   | "landing" | "dashboard" | "analyzer" | "deepfake"
   | "learning" | "quiz" | "profile" | "teacher" | "mobile"
-  | "privacy" | "terms";
+  | "impact" | "privacy" | "terms";
+
+type DemoProgress = {
+  analysisComplete: boolean;
+  quizWon: boolean;
+  challengeWon: boolean;
+};
 
 const screenPaths: Record<Screen, string> = {
   landing: "/",
@@ -38,6 +46,7 @@ const screenPaths: Record<Screen, string> = {
   profile: "/profile",
   teacher: "/teacher",
   mobile: "/mobile",
+  impact: "/impact",
   privacy: "/privacy",
   terms: "/terms",
 };
@@ -117,6 +126,29 @@ const quizQuestions = [
     explanation: "Reverse image search (Google Images, TinEye) reveals if an image has been used before, potentially in a different context. This is a foundational fact-checking technique."
   }
 ];
+
+const demoPost = "BREAKING: A secret school policy will ban phones nationwide next week. Officials are hiding the document and every student will be fined $500 if they bring a phone to class. Share before they delete this.";
+
+const demoScenarios = [
+  {
+    id: "school",
+    label: "School Rumor",
+    description: "A viral policy scare with no primary source.",
+    input: demoPost,
+  },
+  {
+    id: "health",
+    label: "Health Claim",
+    description: "A miracle-cure post with absolute language.",
+    input: "Doctors are hiding this: drinking one herbal tea every morning reverses diabetes in 7 days. Big Pharma does not want you to know. Share this cure with your family now.",
+  },
+  {
+    id: "civic",
+    label: "Election Clip",
+    description: "A cropped civic claim missing context.",
+    input: "This video proves the city council secretly cancelled youth voting registration. The clip shows one official saying the program is paused. Nobody in local media will cover it.",
+  },
+] as const;
 
 const modules = [
   { id: 1, title: "Spot Fake News", icon: "🎯", color: "#2563EB", xp: 150, progress: 100, lessons: 8, completed: true },
@@ -471,6 +503,14 @@ function shuffleItems<T>(items: T[]) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+function challengeKeywords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 3 && !["with", "from", "that", "this", "into", "your", "they", "than", "most", "less", "more", "only", "when", "what", "why", "then", "into"].includes(word));
+}
+
 // ─── Nav items ────────────────────────────────────────────────────────────────
 const navItems: { icon: React.ReactNode; label: string; screen: Screen }[] = [
   { icon: <Home size={18} />, label: "Home", screen: "dashboard" },
@@ -756,7 +796,7 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
             {[
               { title: "Human judgment first", body: "Every result includes recommendations so students learn how to verify claims instead of blindly trusting an AI score.", icon: <Brain size={20} /> },
               { title: "Transparent signals", body: "Credibility, bias, emotion, source reliability, and fact-confidence signals are shown separately for easier review.", icon: <Eye size={20} /> },
-              { title: "Privacy-aware workflow", body: "Uploaded content is used for analysis previews in this demo. Production deployments should document retention and school data policies.", icon: <Shield size={20} /> },
+              { title: "Privacy-aware workflow", body: "Uploaded content is used for analysis previews in this product preview. Production deployments should document retention and school data policies.", icon: <Shield size={20} /> },
             ].map((item) => (
               <div key={item.title} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: BLUE + "12", color: BLUE }}>{item.icon}</div>
@@ -861,14 +901,24 @@ function LegalPage({ type, onNavigate }: { type: "privacy" | "terms"; onNavigate
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD LAYOUT
 // ══════════════════════════════════════════════════════════════════════════════
-function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate: (s: Screen) => void; children: React.ReactNode }) {
+function AppShell({ screen, onNavigate, progress, children }: { screen: Screen; onNavigate: (s: Screen) => void; progress: DemoProgress; children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [presenterMode, setPresenterMode] = useState(true);
+  const demoStepsDone = [progress.analysisComplete, progress.quizWon, progress.challengeWon].filter(Boolean).length;
+  const totalXp = 3640 + (progress.analysisComplete ? 75 : 0) + (progress.quizWon ? 150 : 0) + (progress.challengeWon ? 225 : 0);
+  const presenterSteps = [
+    { label: "Analyze", done: progress.analysisComplete, screen: "analyzer" as Screen },
+    { label: "Challenge", done: progress.quizWon, screen: "quiz" as Screen },
+    { label: "Teacher", done: progress.challengeWon, screen: "teacher" as Screen },
+    { label: "Impact", done: progress.challengeWon, screen: "impact" as Screen },
+  ];
+  const mobileNav = navItems.filter((item) => ["dashboard", "analyzer", "learning", "quiz", "teacher"].includes(item.screen));
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden" style={{ fontFamily: "Inter, sans-serif" }}>
       {/* Sidebar */}
       <aside className={cn(
-        "flex-shrink-0 bg-white border-r border-slate-100 flex flex-col transition-all duration-300 z-20",
+        "hidden md:flex flex-shrink-0 bg-white border-r border-slate-100 flex-col transition-all duration-300 z-20",
         sidebarOpen ? "w-56" : "w-16"
       )}>
         <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-100">
@@ -898,12 +948,26 @@ function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate
         </nav>
 
         <div className="p-3 border-t border-slate-100">
+          {sidebarOpen && (
+            <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-blue-900">Live Judge Flow</p>
+                <span className="text-xs font-bold" style={{ color: BLUE }}>{demoStepsDone}/3</span>
+              </div>
+              <div className="h-1.5 bg-white rounded-full overflow-hidden mb-2">
+                <div className="h-full rounded-full transition-all" style={{ width: `${(demoStepsDone / 3) * 100}%`, background: `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
+              </div>
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                Analyze a viral post, win the challenge, then show teacher impact.
+              </p>
+            </div>
+          )}
           {sidebarOpen ? (
             <div className="flex items-center gap-3 px-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center text-white text-xs font-bold">JD</div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-slate-800 truncate">Jordan Davis</p>
-                <p className="text-[10px] text-slate-400">Level 7 · 3,640 XP</p>
+                <p className="text-[10px] text-slate-400">Level {progress.challengeWon ? 8 : 7} · {totalXp.toLocaleString()} XP</p>
               </div>
             </div>
           ) : (
@@ -917,9 +981,15 @@ function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <button aria-label="Toggle sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+            <button aria-label="Toggle sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} className="hidden md:block p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
               <Menu size={18} />
             </button>
+            <div className="md:hidden flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
+                <Shield size={16} className="text-white" />
+              </div>
+              <span className="font-bold text-slate-900 text-sm">TruthQuest <span style={{ color: BLUE }}>AI</span></span>
+            </div>
             <div className="relative hidden sm:block">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:border-transparent" style={{ "--tw-ring-color": BLUE } as React.CSSProperties} placeholder="Search articles, topics..." aria-label="Search articles and topics" />
@@ -937,16 +1007,63 @@ function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100">
                 <Zap size={14} style={{ color: BLUE }} />
-                <span className="text-xs font-bold" style={{ color: BLUE }}>3,640 XP</span>
+                <span className="text-xs font-bold" style={{ color: BLUE }}>{totalXp.toLocaleString()} XP</span>
               </div>
             </div>
+            <button onClick={() => setPresenterMode((value) => !value)} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+              <Monitor size={13} /> Presenter
+            </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
           {children}
         </main>
+
+        {presenterMode && (
+          <div className="hidden md:block fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(760px,calc(100vw-2rem))]">
+            <div className="rounded-2xl border border-blue-100 bg-white/95 backdrop-blur shadow-lg p-3">
+              <div className="flex items-center gap-3">
+                <div className="px-3">
+                  <p className="text-xs font-bold text-slate-900">Presenter Mode</p>
+                  <p className="text-[11px] text-slate-500">One story, four clicks</p>
+                </div>
+                <div className="flex-1 grid grid-cols-4 gap-2">
+                  {presenterSteps.map((step, index) => (
+                    <button
+                      key={step.label}
+                      onClick={() => onNavigate(step.screen)}
+                      className={cn("rounded-xl border px-3 py-2 text-left transition-colors", step.done ? "border-green-100 bg-green-50" : screen === step.screen ? "border-blue-200 bg-blue-50" : "border-slate-100 bg-slate-50 hover:bg-blue-50")}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: step.done ? GREEN : BLUE }}>Step {index + 1}</p>
+                      <p className="text-xs font-bold text-slate-800 truncate">{step.label}</p>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setPresenterMode(false)} className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Hide presenter mode">
+                  <X size={15} className="mx-auto" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-100 px-2 pb-3 pt-2">
+          <div className="grid grid-cols-5 gap-1">
+            {mobileNav.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => onNavigate(item.screen)}
+                className={cn("flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold", screen === item.screen ? "text-white" : "text-slate-500")}
+                style={screen === item.screen ? { background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` } : {}}
+              >
+                {item.icon}
+                <span className="truncate max-w-full">{item.label.replace("Learning Hub", "Learn").replace("Teacher View", "Teacher")}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -955,13 +1072,21 @@ function AppShell({ screen, onNavigate, children }: { screen: Screen; onNavigate
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD HOME
 // ══════════════════════════════════════════════════════════════════════════════
-function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; bootstrap: AppBootstrap | null }) {
+function Dashboard({ setScreen, bootstrap, progress }: { setScreen: (s: Screen) => void; bootstrap: AppBootstrap | null; progress: DemoProgress }) {
   const recentAnalyses = bootstrap?.dashboard?.recentAnalyses ?? [
     { title: "Government unveils new AI policy draft", source: "techpolicy.gov", score: 91, bias: "Low", time: "2h ago", tag: "Politics" },
     { title: "Miracle berry cures diabetes, doctors hate this", source: "healthhacks.net", score: 22, bias: "High", time: "5h ago", tag: "Health" },
     { title: "Youth unemployment hits 5-year low in Q3", source: "reuters.com", score: 87, bias: "Low", time: "1d ago", tag: "Economy" },
     { title: "Celebrity endorses questionable crypto scheme", source: "cryptonews24.co", score: 38, bias: "High", time: "2d ago", tag: "Finance" },
   ];
+  const literacyScore = progress.challengeWon ? 91 : progress.quizWon ? 88 : progress.analysisComplete ? 86 : 84;
+  const totalXp = 3640 + (progress.analysisComplete ? 75 : 0) + (progress.quizWon ? 150 : 0) + (progress.challengeWon ? 225 : 0);
+  const demoRecentAnalyses = progress.analysisComplete
+    ? [
+      { title: "Viral school phone-ban rumor", source: "live classroom input", score: 31, bias: "High", time: "Just now", tag: "Education" },
+      ...recentAnalyses,
+    ]
+    : recentAnalyses;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -969,7 +1094,7 @@ function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; b
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Good morning, Jordan 👋</h1>
-          <p className="text-slate-500 text-sm mt-0.5">You have analyzed <span className="font-semibold text-slate-700">47 articles</span> this month. Keep it up!</p>
+          <p className="text-slate-500 text-sm mt-0.5">You have analyzed <span className="font-semibold text-slate-700">{progress.analysisComplete ? 48 : 47} articles</span> this month. Keep it up!</p>
         </div>
         <button onClick={() => setScreen("analyzer")} className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
           <Search size={16} /> Analyze Content
@@ -978,10 +1103,33 @@ function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; b
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Target size={20} />} label="Literacy Score" value="84" sub="↑ 6 points this week" color={BLUE} />
+        <StatCard icon={<Target size={20} />} label="Literacy Score" value={`${literacyScore}`} sub={progress.challengeWon ? "↑ 13 points after challenge" : "↑ 6 points this week"} color={BLUE} />
         <StatCard icon={<Flame size={20} />} label="Day Streak" value="14" sub="Best: 21 days" color={AMBER} />
-        <StatCard icon={<Search size={20} />} label="Analyses Done" value="47" sub="This month" color={TEAL} />
-        <StatCard icon={<Trophy size={20} />} label="Badges Earned" value="4/8" sub="4 more to unlock" color={PURPLE} />
+        <StatCard icon={<Search size={20} />} label="Analyses Done" value={`${progress.analysisComplete ? 48 : 47}`} sub="This month" color={TEAL} />
+        <StatCard icon={<Trophy size={20} />} label="Badges Earned" value={progress.quizWon ? "5/8" : "4/8"} sub={progress.quizWon ? "Truth Guardian unlocked" : "4 more to unlock"} color={PURPLE} />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BLUE }}>Live Judge Path</p>
+            <h2 className="font-extrabold text-slate-900 text-lg">Analyze a real claim and turn it into measurable classroom growth</h2>
+            <p className="text-sm text-slate-500 mt-1">Paste any URL or text, run live analysis, complete the challenge, then open Teacher View to see Jordan move from at-risk to on-track.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Chip label={progress.analysisComplete ? "Analysis done" : "1. Analyze"} color={progress.analysisComplete ? GREEN : BLUE} bg={(progress.analysisComplete ? GREEN : BLUE) + "15"} />
+            <Chip label={progress.quizWon ? "Quiz won" : "2. Win quiz"} color={progress.quizWon ? GREEN : AMBER} bg={(progress.quizWon ? GREEN : AMBER) + "15"} />
+            <Chip label={progress.challengeWon ? "Teacher impact ready" : "3. Show impact"} color={progress.challengeWon ? GREEN : PURPLE} bg={(progress.challengeWon ? GREEN : PURPLE) + "15"} />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={() => setScreen("analyzer")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+            Start Live Analysis
+          </button>
+          <button onClick={() => setScreen("teacher")} className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50">
+            Teacher Impact
+          </button>
+        </div>
       </div>
 
       {/* Charts row */}
@@ -1042,7 +1190,7 @@ function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; b
             <button onClick={() => setScreen("analyzer")} className="text-xs font-semibold" style={{ color: BLUE }}>View all →</button>
           </div>
           <div className="divide-y divide-slate-50">
-            {recentAnalyses.map(a => (
+            {demoRecentAnalyses.slice(0, 5).map(a => (
               <div key={a.title} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
                 <ScoreMeter score={a.score} size={56} />
                 <div className="flex-1 min-w-0">
@@ -1070,21 +1218,24 @@ function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; b
             <button onClick={() => setScreen("learning")} className="text-xs font-semibold" style={{ color: BLUE }}>Hub →</button>
           </div>
           <div className="p-4 space-y-4">
-            {modules.slice(0, 4).map(m => (
-              <div key={m.id} className="flex items-center gap-3">
-                <div className="text-lg flex-shrink-0">{m.icon}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{m.title}</p>
-                    <span className="text-xs font-bold ml-2" style={{ color: m.progress === 100 ? GREEN : BLUE, fontFamily: "DM Mono, monospace" }}>{m.progress}%</span>
+            {modules.slice(0, 4).map((m) => {
+              const moduleProgress = m.title === "Source Verification" && progress.challengeWon ? 100 : m.progress;
+              return (
+                <div key={m.id} className="flex items-center gap-3">
+                  <div className="text-lg flex-shrink-0">{m.icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-slate-700 truncate">{m.title}</p>
+                      <span className="text-xs font-bold ml-2" style={{ color: moduleProgress === 100 ? GREEN : BLUE, fontFamily: "DM Mono, monospace" }}>{moduleProgress}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${moduleProgress}%`, background: moduleProgress === 100 ? GREEN : `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${m.progress}%`, background: m.progress === 100 ? GREEN : `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
-                  </div>
+                  {(m.completed || moduleProgress === 100) && <CheckCircle size={14} style={{ color: GREEN }} className="flex-shrink-0" />}
                 </div>
-                {m.completed && <CheckCircle size={14} style={{ color: GREEN }} className="flex-shrink-0" />}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1095,7 +1246,7 @@ function Dashboard({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; b
 // ══════════════════════════════════════════════════════════════════════════════
 // CONTENT ANALYZER
 // ══════════════════════════════════════════════════════════════════════════════
-function ContentAnalyzer() {
+function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Screen) => void; onAnalysisComplete: () => void }) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"url" | "text" | "image">("url");
   const [loading, setLoading] = useState(false);
@@ -1104,7 +1255,22 @@ function ContentAnalyzer() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<"checking" | "live" | "offline">("checking");
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    checkBackendHealth()
+      .then((healthy) => {
+        if (active) setBackendStatus(healthy ? "live" : "offline");
+      })
+      .catch(() => {
+        if (active) setBackendStatus("offline");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const analyze = async () => {
     const payloadInput = mode === "image" ? imagePreview ?? "" : input;
@@ -1121,6 +1287,7 @@ function ContentAnalyzer() {
       const response = await analyzeContent({ mode, input: payloadInput });
       setAnalysis(response);
       setResult("done");
+      onAnalysisComplete();
     } catch (error) {
       setAnalysis(null);
       setResult(null);
@@ -1128,6 +1295,17 @@ function ContentAnalyzer() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadScenario = (scenario = demoScenarios[0]) => {
+    setMode("text");
+    setInput(scenario.input);
+    setImagePreview(null);
+    setInputError(null);
+    setAnalysisError(null);
+    setLoading(false);
+    setAnalysis(null);
+    setResult(null);
   };
 
   const score = analysis?.score ?? 0;
@@ -1149,7 +1327,52 @@ function ContentAnalyzer() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900">Content Analyzer</h1>
-        <p className="text-slate-500 text-sm mt-1">Paste a URL, text, or upload an image to get a transparent credibility report with claims, source signals, and evidence checks.</p>
+        <p className="text-slate-500 text-sm mt-1">Paste a URL or text for claim analysis, or upload an image for real file, metadata, provenance, and integrity checks.</p>
+      </div>
+
+      <div className={cn("rounded-2xl border p-5", backendStatus === "live" ? "bg-green-50 border-green-100" : backendStatus === "checking" ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100")}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: backendStatus === "live" ? GREEN : backendStatus === "offline" ? AMBER : BLUE }}>Live Analysis Status</p>
+            <h2 className="font-extrabold text-slate-900">{backendStatus === "live" ? "Backend connected. Analyze any URL or text in real time." : backendStatus === "checking" ? "Checking backend connection..." : "Backend not connected yet."}</h2>
+            <p className="text-sm text-slate-600 mt-1 max-w-2xl">
+              {backendStatus === "live"
+                ? "The report below will come from the FastAPI analyzer, including live URL fetching, evidence-source checks, and real uploaded-image inspection."
+                : "Start the FastAPI backend on port 8000 before presenting live analysis. Sample inputs below still help you test the flow."}
+            </p>
+          </div>
+          <Chip
+            label={backendStatus === "live" ? "Live backend" : backendStatus === "checking" ? "Checking" : "Start backend"}
+            color={backendStatus === "live" ? GREEN : backendStatus === "checking" ? BLUE : AMBER}
+            bg={(backendStatus === "live" ? GREEN : backendStatus === "checking" ? BLUE : AMBER) + "15"}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-100 bg-white p-5 space-y-4 shadow-sm">
+        <div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BLUE }}>Live Test Starters</p>
+              <h2 className="font-extrabold text-slate-900">Use these as input, then run real analysis</h2>
+            </div>
+            <Chip label="No canned result" color={TEAL} bg={TEAL + "15"} />
+          </div>
+          <p className="text-sm text-slate-500 mt-1 max-w-2xl">These examples only fill the text box. The score, claims, evidence, and recommendations are produced when you click Analyze Content.</p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {demoScenarios.map((scenario) => (
+            <button
+              key={scenario.id}
+              onClick={() => loadScenario(scenario)}
+              className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-left hover:border-blue-300 hover:bg-blue-50 transition-all"
+            >
+              <p className="text-sm font-bold text-slate-900">{scenario.label}</p>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">{scenario.description}</p>
+              <p className="text-xs font-bold mt-3" style={{ color: BLUE }}>Use as live input</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
@@ -1208,7 +1431,7 @@ function ContentAnalyzer() {
                 <>
                   <Upload size={24} className="text-slate-400" />
                   <p className="text-sm text-slate-500">Drop image here or <span className="font-semibold" style={{ color: BLUE }}>browse</span></p>
-                  <p className="text-xs text-slate-400">PNG, JPG, WEBP up to 10MB</p>
+                  <p className="text-xs text-slate-400">PNG, JPG, WEBP up to 10MB. Checks metadata locally and extracts text when Tesseract OCR is installed.</p>
                 </>
               )}
             </label>
@@ -1265,7 +1488,7 @@ function ContentAnalyzer() {
               <ScoreMeter score={score} size={110} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-slate-900 text-lg">Credibility Score: {score}/100</h3>
+                  <h3 className="font-bold text-slate-900 text-lg">{mode === "image" ? "Image Analysis Score" : "Credibility Score"}: {score}/100</h3>
                   <CheckCircle size={18} style={{ color: GREEN }} />
                 </div>
                 {(analysis?.sourceUrl || analysis?.sourceTitle) && (
@@ -1437,7 +1660,10 @@ function ContentAnalyzer() {
               <p className="font-semibold text-slate-800 text-sm">Great analysis! You earned <span style={{ color: BLUE }}>+{analysis?.xpEarned ?? 25} XP</span></p>
               <p className="text-xs text-slate-500">Share responsibly — tap the share button to post your findings.</p>
             </div>
-            <button className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: BLUE }}>
+            <button onClick={() => setScreen("quiz")} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: BLUE }}>
+              <Trophy size={12} /> Take Challenge
+            </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-100 bg-white" style={{ color: BLUE }}>
               <Share2 size={12} /> Share
             </button>
           </div>
@@ -1641,10 +1867,16 @@ function DeepfakeDetector() {
 // ══════════════════════════════════════════════════════════════════════════════
 // LEARNING HUB
 // ══════════════════════════════════════════════════════════════════════════════
-function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void; bootstrap: AppBootstrap | null }) {
+function LearningHub({ setScreen, bootstrap, progress, onChallengeComplete }: { setScreen: (s: Screen) => void; bootstrap: AppBootstrap | null; progress: DemoProgress; onChallengeComplete: () => void }) {
   const [view, setView] = useState<"modules" | "leaderboard">("modules");
   const courses = (bootstrap?.learning?.modules?.length ? bootstrap.learning.modules : modules)
-    .map((module, index) => normalizeLearningModule(module, modules[index] ?? modules[0]));
+    .map((module, index) => {
+      const normalized = normalizeLearningModule(module, modules[index] ?? modules[0]);
+      if (progress.challengeWon && normalized.title === "Source Verification") {
+        return { ...normalized, progress: 100, completed: true };
+      }
+      return normalized;
+    });
   const leaderboardData = bootstrap?.learning?.leaderboard ?? leaderboard;
   const [activeModuleId, setActiveModuleId] = useState<number | null>(null);
   const [challengeModuleId, setChallengeModuleId] = useState<number | null>(null);
@@ -1700,11 +1932,12 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
       .sort((a, b) => b.strength - a.strength)
       .slice(0, 2);
     const reflectionText = challengeReflection.trim().toLowerCase();
-    const reflectionMentionsTopTwo = topTwo.every((item) =>
-      reflectionText.includes(item.label.toLowerCase().split(" ").slice(0, 2).join(" ")) || reflectionText.includes(item.id),
-    );
+    const reflectionMentionsTopTwo = topTwo.every((item) => {
+      const keywords = [...challengeKeywords(item.label), ...challengeKeywords(item.detail), item.id];
+      return keywords.some((keyword) => reflectionText.includes(keyword));
+    });
     const reflectionHasReason = /(because|since|evidence|primary|source|stronger|original|official|document|study|provenance)/i.test(challengeReflection);
-    const reflectionComplete = challengeReflectionSubmitted && reflectionMentionsTopTwo && reflectionHasReason;
+    const reflectionComplete = challengeReflectionSubmitted && reflectionHasReason && (reflectionMentionsTopTwo || reflectionText.length >= 40);
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-6">
         <button onClick={() => { setChallengeModuleId(null); setChallengeSubmitted(false); setDraggedItemId(null); }} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
@@ -1800,6 +2033,18 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
               </h3>
               <p className={cn("text-sm leading-relaxed", isCorrect ? "text-green-800" : "text-amber-800")}>{challengeLesson.challenge.explanation}</p>
               <div className="mt-4 flex flex-wrap gap-3 justify-end">
+                {!isCorrect && (
+                  <button
+                    onClick={() => {
+                      setChallengeOrder(correctOrder);
+                      setChallengeSubmitted(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-blue-200 text-sm font-semibold bg-white hover:bg-blue-50 transition-colors"
+                    style={{ color: BLUE }}
+                  >
+                    Review Correct Order
+                  </button>
+                )}
                 <button onClick={() => { setChallengeOrder(shuffleItems(challengeLesson.challenge.items).map((item) => item.id)); setChallengeSubmitted(false); }} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors">
                   Try Again
                 </button>
@@ -1837,7 +2082,7 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
                   <p className={cn("text-sm leading-relaxed", reflectionComplete ? "text-green-800" : "text-amber-800")}>
                     {reflectionComplete
                       ? "Your explanation references the strongest evidence and gives a reason for the ranking."
-                      : "Mention the top two items explicitly and explain why they are stronger using evidence words like source, primary, document, study, or provenance."}
+                      : "Mention the top evidence items or write a short reason using evidence words like source, primary, document, study, or provenance."}
                   </p>
                 </div>
               )}
@@ -1846,8 +2091,21 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
 
           {challengeSubmitted && reflectionComplete && (
             <div className="mt-5 flex justify-end">
-              <button onClick={() => { setChallengeModuleId(null); setChallengeSubmitted(false); setChallengeReflection(""); setChallengeReflectionSubmitted(false); setDraggedItemId(null); }} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
-                Return to Lesson
+              <button
+                onClick={() => {
+                  onChallengeComplete();
+                  setChallengeModuleId(null);
+                  setChallengeSubmitted(false);
+                  setChallengeReflection("");
+                  setChallengeReflectionSubmitted(false);
+                  setDraggedItemId(null);
+                  setScreen("teacher");
+                  confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
+                }}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+                style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}
+              >
+                Show Teacher Impact
               </button>
             </div>
           )}
@@ -2065,7 +2323,7 @@ function LearningHub({ setScreen, bootstrap }: { setScreen: (s: Screen) => void;
 // ══════════════════════════════════════════════════════════════════════════════
 // QUIZ SCREEN
 // ══════════════════════════════════════════════════════════════════════════════
-function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
+function QuizScreen({ bootstrap, setScreen, onWin }: { bootstrap: AppBootstrap | null; setScreen: (s: Screen) => void; onWin: () => void }) {
   const [qIndex, setQIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
@@ -2075,6 +2333,7 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 
   const quizList = bootstrap?.quiz?.questions ?? quizQuestions;
   const q = quizList[qIndex];
+  const passScore = Math.ceil(quizList.length * 0.67);
 
   useEffect(() => {
     if (selected !== null || finished) return;
@@ -2084,39 +2343,64 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
   }, [timeLeft, selected, finished]);
 
   const choose = (i: number) => {
-    if (selected !== null) return;
+    if (selected !== null || showResult) return;
     setSelected(i);
     if (i === q.correct) setScore(s => s + 1);
     setTimeout(() => setShowResult(true), 600);
   };
 
   const next = () => {
-    if (qIndex + 1 >= quizList.length) { setFinished(true); return; }
+    if (qIndex + 1 >= quizList.length) {
+      setFinished(true);
+      if (score >= passScore) {
+        onWin();
+        confetti({ particleCount: 120, spread: 75, origin: { y: 0.65 } });
+      }
+      return;
+    }
     setQIndex(qi => qi + 1);
     setSelected(null);
     setShowResult(false);
     setTimeLeft(30);
   };
 
-  if (finished) return (
+  if (finished) {
+    const passed = score >= passScore;
+    return (
     <div className="p-6 max-w-2xl mx-auto flex flex-col items-center pt-16 space-y-6">
-      <div className="text-6xl">🏆</div>
-      <h2 className="text-3xl font-extrabold text-slate-900 text-center">Quiz Complete!</h2>
-      <p className="text-slate-500 text-center">You scored <span className="font-bold" style={{ color: BLUE }}>{score}/{quizList.length}</span> — excellent critical thinking!</p>
+      <div className="text-6xl">{passed ? "🏆" : "🎯"}</div>
+      <h2 className="text-3xl font-extrabold text-slate-900 text-center">{passed ? "Challenge Won!" : "Almost There"}</h2>
+      <p className="text-slate-500 text-center">
+        You scored <span className="font-bold" style={{ color: BLUE }}>{score}/{quizList.length}</span>.
+        {passed ? " You earned your Truth Guardian badge." : ` Score ${passScore}/${quizList.length} to win this challenge.`}
+      </p>
       <div className="flex flex-wrap gap-3 justify-center">
         <Chip label={`+${score * 50} XP Earned`} color={GREEN} bg={GREEN + "15"} />
-        <Chip label="🔥 Streak Maintained" color={AMBER} bg={AMBER + "15"} />
-        {score === quizQuestions.length && <Chip label="🎯 Perfect Score!" color={BLUE} bg={BLUE + "12"} />}
+        {passed && <Chip label="Truth Guardian Badge" color={AMBER} bg={AMBER + "15"} />}
+        {score === quizList.length && <Chip label="Perfect Score" color={BLUE} bg={BLUE + "12"} />}
       </div>
       <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center">
         <ScoreMeter score={Math.round((score / quizList.length) * 100)} size={140} />
         <p className="mt-3 font-semibold text-slate-700">Accuracy Rate</p>
       </div>
-      <button onClick={() => { setQIndex(0); setSelected(null); setShowResult(false); setScore(0); setFinished(false); setTimeLeft(30); }} className="px-8 py-3 rounded-xl font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
-        Try Again
-      </button>
+      {!passed && (
+        <div className="w-full rounded-2xl border border-amber-100 bg-amber-50 p-5 text-center">
+          <p className="text-sm font-semibold text-amber-900">Review the explanations and retry. Every answer reveals the correct reasoning before the next question.</p>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-3 justify-center">
+        <button onClick={() => { setQIndex(0); setSelected(null); setShowResult(false); setScore(0); setFinished(false); setTimeLeft(30); }} className="px-8 py-3 rounded-xl font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
+          {passed ? "Play Again" : "Retry Challenge"}
+        </button>
+        {passed && (
+          <button onClick={() => setScreen("teacher")} className="px-8 py-3 rounded-xl font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50">
+            Show Teacher Impact
+          </button>
+        )}
+      </div>
     </div>
-  );
+    );
+  }
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
@@ -2130,7 +2414,7 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 
         {/* Progress bar */}
         <div className="flex gap-2">
-          {quizQuestions.map((_, i) => (
+          {quizList.map((_, i) => (
             <div key={i} className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-100">
               <div className="h-full rounded-full transition-all" style={{ width: i < qIndex ? "100%" : i === qIndex ? "50%" : "0%", background: i < qIndex ? GREEN : `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
             </div>
@@ -2141,8 +2425,9 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
       {/* Question */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Chip label={`Question ${qIndex + 1} of ${quizQuestions.length}`} color={BLUE} bg={BLUE + "12"} />
+          <Chip label={`Question ${qIndex + 1} of ${quizList.length}`} color={BLUE} bg={BLUE + "12"} />
           <Chip label="+50 XP" color={AMBER} bg={AMBER + "15"} />
+          <Chip label={`Win at ${passScore}/${quizList.length}`} color={GREEN} bg={GREEN + "15"} />
         </div>
         <h2 className="text-lg font-bold text-slate-900 leading-snug">{q.question}</h2>
       </div>
@@ -2162,7 +2447,7 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
             <button
               key={i}
               onClick={() => choose(i)}
-              disabled={selected !== null}
+              disabled={selected !== null || showResult}
               className={cn("w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all font-medium text-sm", bg, textColor, selected === null && "hover:border-blue-300 hover:bg-blue-50")}
               style={selected !== null && isCorrect ? { backgroundColor: GREEN + "10", borderColor: GREEN } : selected !== null && isSelected ? { backgroundColor: "#FEF2F2", borderColor: "#EF4444" } : {}}
             >
@@ -2184,7 +2469,7 @@ function QuizScreen({ bootstrap }: { bootstrap: AppBootstrap | null }) {
             <Sparkles size={16} style={{ color: selected === q.correct ? GREEN : "#EF4444" }} className="flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-bold text-sm mb-1" style={{ color: selected === q.correct ? "#15803D" : "#DC2626" }}>
-                {selected === q.correct ? "Correct! Well done." : "Not quite — here's why:"}
+                {selected === q.correct ? "Correct! Well done." : selected === null ? "Time's up — here's why:" : "Not quite — here's why:"}
               </p>
               <p className="text-sm leading-relaxed" style={{ color: selected === q.correct ? "#166534" : "#991B1B" }}>{q.explanation}</p>
             </div>
@@ -2308,9 +2593,13 @@ function StudentProfile({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TEACHER DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
-function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
+function TeacherDashboard({ bootstrap, progress, setScreen }: { bootstrap: AppBootstrap | null; progress: DemoProgress; setScreen: (s: Screen) => void }) {
   const [studentQuery, setStudentQuery] = useState("");
-  const classPerformance = bootstrap?.teacher?.classPerformance ?? weeklyData.map(d => ({ name: d.day, average: d.score }));
+  const [interventionAssigned, setInterventionAssigned] = useState(false);
+  const classPerformance = bootstrap?.teacher?.classPerformance ?? weeklyData.map((d, index) => ({
+    name: d.day,
+    average: progress.challengeWon && index >= 4 ? Math.min(96, d.score + 5) : d.score,
+  }));
   const skillDistribution = bootstrap?.teacher?.skillDistribution ?? [
     { name: "Fact Checking", value: 85 },
     { name: "Source Verification", value: 78 },
@@ -2323,6 +2612,16 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
     { name: "Not Started", value: 3, color: "#E2E8F0" },
   ];
   const students = bootstrap?.teacher?.students ?? [
+    {
+      id: 0,
+      name: "Jordan Davis",
+      level: progress.challengeWon ? 8 : 7,
+      xp: 3640 + (progress.analysisComplete ? 75 : 0) + (progress.quizWon ? 150 : 0) + (progress.challengeWon ? 225 : 0),
+      score: progress.challengeWon ? 91 : progress.quizWon ? 88 : progress.analysisComplete ? 82 : 74,
+      streak: 14,
+      lessons: progress.challengeWon ? 32 : 31,
+      status: progress.challengeWon ? "excellent" : progress.analysisComplete ? "good" : "average",
+    },
     { id: 1, name: "Sarah Chen", level: 15, xp: 3420, score: 92, streak: 14, lessons: 18, status: "excellent" },
     { id: 2, name: "Alex Rodriguez", level: 12, xp: 2450, score: 85, streak: 7, lessons: 15, status: "good" },
     { id: 3, name: "Maya Patel", level: 11, xp: 2180, score: 88, streak: 10, lessons: 14, status: "good" },
@@ -2344,8 +2643,12 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
           <button disabled title="Report export is not available in this preview" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-400 bg-white cursor-not-allowed">
             <FileText size={15} /> Export Report
           </button>
-          <button disabled title="Challenge assignment is not available in this preview" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white opacity-60 cursor-not-allowed" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
-            <Zap size={15} /> Assign Challenge
+          <button
+            onClick={() => setInterventionAssigned(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
+            style={{ background: interventionAssigned ? GREEN : `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}
+          >
+            {interventionAssigned ? <CheckCircle size={15} /> : <Zap size={15} />} {interventionAssigned ? "Feedback Sent" : "Send Feedback"}
           </button>
         </div>
       </div>
@@ -2353,9 +2656,43 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
       {/* Class summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={<Users size={20} />} label="Students" value="28" sub="24 active this week" color={BLUE} />
-        <StatCard icon={<TrendingUp size={20} />} label="Class Average" value="76" sub="↑ 8 pts from last month" color={GREEN} />
+        <StatCard icon={<TrendingUp size={20} />} label="Class Average" value={progress.challengeWon ? "81" : "76"} sub={progress.challengeWon ? "↑ 5 pts after live challenge" : "↑ 8 pts from last month"} color={GREEN} />
         <StatCard icon={<BookOpen size={20} />} label="Lessons Assigned" value="12" sub="9 completed by class" color={TEAL} />
-        <StatCard icon={<Trophy size={20} />} label="Challenges Done" value="156" sub="Across all students" color={AMBER} />
+        <StatCard icon={<Trophy size={20} />} label="Challenges Done" value={progress.quizWon || progress.challengeWon ? "157" : "156"} sub={progress.quizWon || progress.challengeWon ? "Jordan completed one now" : "Across all students"} color={AMBER} />
+      </div>
+
+      <div className={cn("rounded-2xl border p-5", progress.analysisComplete || progress.quizWon || progress.challengeWon ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100")}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: progress.challengeWon ? GREEN : AMBER }}>Live Student Outcome</p>
+            <h2 className="font-extrabold text-slate-900 text-lg">
+              {progress.challengeWon ? "Jordan moved from progressing to on-track" : progress.quizWon ? "Jordan earned the Truth Guardian badge" : progress.analysisComplete ? "Jordan analyzed a risky viral post" : "Run a live analysis to generate an outcome"}
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">
+              {progress.challengeWon
+                ? "The teacher can now see the completed challenge, higher literacy score, and source-verification growth."
+                : "Use the Analyzer and Challenge screens to update this classroom view during the pitch."}
+            </p>
+            {interventionAssigned && (
+              <p className="text-sm font-semibold text-green-800 mt-2">Remediation assigned: Jordan gets a source-verification practice set and teacher feedback.</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Chip label={progress.analysisComplete ? "Analysis complete" : "Awaiting analysis"} color={progress.analysisComplete ? GREEN : AMBER} bg={(progress.analysisComplete ? GREEN : AMBER) + "15"} />
+            <Chip label={progress.quizWon ? "Badge unlocked" : "Badge pending"} color={progress.quizWon ? GREEN : AMBER} bg={(progress.quizWon ? GREEN : AMBER) + "15"} />
+            <Chip label={progress.challengeWon ? "Lesson mastered" : "Lesson in progress"} color={progress.challengeWon ? GREEN : BLUE} bg={(progress.challengeWon ? GREEN : BLUE) + "15"} />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={() => setScreen("impact")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+            View Impact Summary
+          </button>
+          {!interventionAssigned && (
+            <button onClick={() => setInterventionAssigned(true)} className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-green-200 bg-white text-green-700 hover:bg-green-50">
+              Assign Remediation
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Charts */}
@@ -2413,7 +2750,7 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {visibleStudents.map(s => (
-                <tr key={s.name} className="hover:bg-slate-50 transition-colors">
+                <tr key={s.name} className={cn("hover:bg-slate-50 transition-colors", s.name === "Jordan Davis" && "bg-blue-50")}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
@@ -2448,6 +2785,79 @@ function TeacherDashboard({ bootstrap }: { bootstrap: AppBootstrap | null }) {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IMPACT SUMMARY
+// ══════════════════════════════════════════════════════════════════════════════
+function ImpactSummary({ progress, setScreen }: { progress: DemoProgress; setScreen: (s: Screen) => void }) {
+  const impactStats = [
+    { label: "Risky Posts Analyzed", value: progress.analysisComplete ? "1" : "0", detail: "Viral classroom claim checked", color: BLUE, icon: <Search size={20} /> },
+    { label: "Unsupported Claims Found", value: progress.analysisComplete ? "3" : "0", detail: "Claims routed to evidence checks", color: AMBER, icon: <AlertTriangle size={20} /> },
+    { label: "Student Score Lift", value: progress.challengeWon ? "+17" : progress.quizWon ? "+14" : progress.analysisComplete ? "+8" : "0", detail: "Jordan's literacy score change", color: GREEN, icon: <TrendingUp size={20} /> },
+    { label: "Teacher Action", value: progress.challengeWon ? "Ready" : "Pending", detail: "Intervention and feedback prepared", color: PURPLE, icon: <GraduationCap size={20} /> },
+  ];
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="rounded-2xl p-6 text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
+        <p className="text-sm font-bold uppercase tracking-wide text-blue-100 mb-2">Final Hackathon Takeaway</p>
+        <h1 className="text-3xl font-extrabold max-w-3xl">TruthQuest turns misinformation detection into measurable classroom learning.</h1>
+        <p className="text-blue-100 text-sm mt-3 max-w-2xl">The winning story is not just that AI flags risky content. It teaches the student what to check next and gives the teacher an actionable outcome.</p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {impactStats.map((stat) => (
+          <div key={stat.label} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: stat.color + "15", color: stat.color }}>
+              {stat.icon}
+            </div>
+            <p className="text-3xl font-extrabold" style={{ color: stat.color, fontFamily: "DM Mono, monospace" }}>{stat.value}</p>
+            <p className="font-bold text-slate-900 text-sm mt-1">{stat.label}</p>
+            <p className="text-xs text-slate-500 mt-1">{stat.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <h2 className="font-bold text-slate-900 mb-4">Live Product Narrative</h2>
+          <div className="space-y-4">
+            {[
+              ["Analyze", "A student pastes a viral claim and gets transparent source, language, claim, and evidence signals.", progress.analysisComplete],
+              ["Learn", "The app converts the analysis into a quiz and evidence-ranking challenge with immediate feedback.", progress.quizWon],
+              ["Act", "The teacher sees Jordan's improved score, completed challenge, and a remediation-ready next step.", progress.challengeWon],
+            ].map(([title, body, done]) => (
+              <div key={title as string} className={cn("rounded-xl border p-4", done ? "bg-green-50 border-green-100" : "bg-slate-50 border-slate-100")}>
+                <div className="flex items-start gap-3">
+                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0", done ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500")}>
+                    {done ? <CheckCircle size={15} /> : <Clock size={15} />}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">{title as string}</p>
+                    <p className="text-sm text-slate-600 mt-1">{body as string}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <h2 className="font-bold text-slate-900 mb-3">Judge Close</h2>
+          <p className="text-sm text-slate-600 leading-relaxed mb-5">TruthQuest is built for the moment a student is about to share something questionable. It gives them a verification habit, then gives educators proof that the habit improved.</p>
+          <div className="space-y-3">
+            <button onClick={() => setScreen("analyzer")} className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
+              Run Another Analysis
+            </button>
+            <button onClick={() => setScreen("teacher")} className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50">
+              Back to Teacher View
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2760,6 +3170,14 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
 export default function App() {
   const [screen, setScreen] = useState<Screen>(() => screenFromPath(window.location.pathname));
   const { data: bootstrap } = useTruthQuestBootstrap();
+  const [demoProgress, setDemoProgress] = useState<DemoProgress>(() => {
+    try {
+      const saved = window.localStorage.getItem("truthquest-demo-progress");
+      return saved ? JSON.parse(saved) as DemoProgress : { analysisComplete: false, quizWon: false, challengeWon: false };
+    } catch {
+      return { analysisComplete: false, quizWon: false, challengeWon: false };
+    }
+  });
 
   useEffect(() => {
     const onPopState = () => setScreen(screenFromPath(window.location.pathname));
@@ -2778,11 +3196,20 @@ export default function App() {
       profile: "Profile | TruthQuest AI",
       teacher: "Teacher Dashboard | TruthQuest AI",
       mobile: "Mobile App Preview | TruthQuest AI",
+      impact: "Impact Summary | TruthQuest AI",
       privacy: "Privacy Policy | TruthQuest AI",
       terms: "Terms of Use | TruthQuest AI",
     };
     document.title = titles[screen];
   }, [screen]);
+
+  useEffect(() => {
+    window.localStorage.setItem("truthquest-demo-progress", JSON.stringify(demoProgress));
+  }, [demoProgress]);
+
+  const markDemoProgress = (updates: Partial<DemoProgress>) => {
+    setDemoProgress((current) => ({ ...current, ...updates }));
+  };
 
   const navigate = (nextScreen: Screen) => {
     const nextPath = screenPaths[nextScreen];
@@ -2798,20 +3225,21 @@ export default function App() {
 
   const content = (() => {
     switch (screen) {
-      case "dashboard": return <Dashboard setScreen={navigate} bootstrap={bootstrap} />;
-      case "analyzer": return <ContentAnalyzer />;
+      case "dashboard": return <Dashboard setScreen={navigate} bootstrap={bootstrap} progress={demoProgress} />;
+      case "analyzer": return <ContentAnalyzer setScreen={navigate} onAnalysisComplete={() => markDemoProgress({ analysisComplete: true })} />;
       case "deepfake": return <DeepfakeDetector />;
-      case "learning": return <LearningHub setScreen={navigate} bootstrap={bootstrap} />;
-      case "quiz": return <QuizScreen bootstrap={bootstrap} />;
+      case "learning": return <LearningHub setScreen={navigate} bootstrap={bootstrap} progress={demoProgress} onChallengeComplete={() => markDemoProgress({ analysisComplete: true, quizWon: true, challengeWon: true })} />;
+      case "quiz": return <QuizScreen bootstrap={bootstrap} setScreen={navigate} onWin={() => markDemoProgress({ analysisComplete: true, quizWon: true, challengeWon: true })} />;
       case "profile": return <StudentProfile bootstrap={bootstrap} />;
-      case "teacher": return <TeacherDashboard bootstrap={bootstrap} />;
+      case "teacher": return <TeacherDashboard bootstrap={bootstrap} progress={demoProgress} setScreen={navigate} />;
       case "mobile": return <MobileView bootstrap={bootstrap} />;
-      default: return <Dashboard setScreen={navigate} bootstrap={bootstrap} />;
+      case "impact": return <ImpactSummary progress={demoProgress} setScreen={navigate} />;
+      default: return <Dashboard setScreen={navigate} bootstrap={bootstrap} progress={demoProgress} />;
     }
   })();
 
   return (
-    <AppShell screen={screen} onNavigate={navigate}>
+    <AppShell screen={screen} onNavigate={navigate} progress={demoProgress}>
       {content}
     </AppShell>
   );

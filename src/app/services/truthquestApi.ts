@@ -384,6 +384,13 @@ export async function fetchTruthQuestBootstrap(): Promise<AppBootstrap> {
   return apiFetch<AppBootstrap>("/api/v1/app/bootstrap");
 }
 
+export async function checkBackendHealth(): Promise<boolean> {
+  const response = await fetch(`${API_BASE_URL}/health`);
+  if (!response.ok) return false;
+  const payload = await response.json().catch(() => null);
+  return payload?.status === "ok";
+}
+
 export async function analyzeContent(request: ContentAnalysisRequest): Promise<ContentAnalysisResponse> {
   return apiFetch<ContentAnalysisResponse>("/api/v1/content/analyze", {
     method: "POST",
