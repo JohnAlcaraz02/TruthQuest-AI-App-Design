@@ -104,7 +104,7 @@ class TeacherAssignment(BaseModel):
 
 class ContentAnalyzeRequest(BaseModel):
     mode: ContentAnalysisMode
-    input: str = Field(min_length=1)
+    input: str = Field(min_length=1, max_length=50_000)
 
 
 class ContentMetric(BaseModel):
@@ -162,6 +162,9 @@ class ContentAnalysisResponse(BaseModel):
     claims: list[ContentClaim] = []
     evidenceSources: list[ContentEvidenceSource] = []
     scoreBreakdown: list[ContentScoreBreakdown] = []
+    analysisStatus: Literal["supported", "mixed", "insufficient_evidence"]
+    analysisConfidence: int
+    limitations: list[str] = []
     xpEarned: int
 
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import ipaddress
+import socket
 import re
 import ssl
 import base64
@@ -11,8 +13,11 @@ import struct
 import shutil
 import subprocess
 import tempfile
+from http.client import InvalidURL
 from html import unescape
 from pathlib import Path
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, quote_plus, urljoin, urlparse
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, urlopen
@@ -121,6 +126,24 @@ def _normalize_url(value: str) -> str:
     return candidate
 
 
+def _validate_public_url(url: str) -> None:
+    """Block local/private destinations before server-side URL fetching."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only public HTTP(S) URLs are supported.")
+    hostname = parsed.hostname.lower()
+    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+        raise ValueError("Local network URLs are not supported.")
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
+    except socket.gaierror as error:
+        raise ValueError("The URL hostname could not be resolved.") from error
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if not ip.is_global:
+            raise ValueError("Private, loopback, and reserved network URLs are not supported.")
+
+
 def _domain_from_url(url: str) -> str:
     hostname = urlparse(url).hostname or ""
     return hostname.lower().removeprefix("www.")
@@ -128,6 +151,7 @@ def _domain_from_url(url: str) -> str:
 
 def _fetch_url_preview(url: str) -> tuple[str, str, str, str, str, list[dict[str, str]], dict[str, str]]:
     normalized_url = _normalize_url(url)
+    _validate_public_url(normalized_url)
     headers = {
         "User-Agent": "TruthQuestAI/1.0",
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
@@ -238,7 +262,9 @@ def _extract_claims(text: str) -> list[str]:
         r"\b\d+(?:\.\d+)?%?\b",
         r"\b(?:announced|reported|confirmed|claimed|said|found|shows|increased|decreased|launched|approved)\b",
         r"\b(?:study|report|data|survey|election|policy|law|court|government|research|official)\b",
-        r"\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b",
+        # "May" is intentionally excluded because lowercasing makes the month
+        # indistinguishable from the common modal verb and creates false claims.
+        r"\b(?:january|february|march|april|june|july|august|september|october|november|december)\b",
     )
     claims: list[str] = []
     for sentence in sentences:
@@ -249,8 +275,6 @@ def _extract_claims(text: str) -> list[str]:
                 claims.append(cleaned)
         if len(claims) >= 5:
             break
-    if not claims and sentences:
-        claims.append(sentences[0])
     return claims
 
 
@@ -267,6 +291,7 @@ def _claim_overlap_score(claim: str, evidence_text: str) -> int:
     return round((hits / len(words)) * 100)
 
 
+@lru_cache(maxsize=128)
 def _fetch_json(url: str, timeout: int = 6) -> dict:
     ssl_context = _build_ssl_context()
     request = Request(url, headers={"User-Agent": "TruthQuestAI/1.0", "Accept": "application/json"})
@@ -394,10 +419,17 @@ def _search_evidence_sources(claims: list[str], source_domain: str) -> tuple[lis
     seen_urls: set[str] = set()
     provider_errors: list[str] = []
 
-    for claim in claims[:3]:
-        for provider_name, provider in providers:
+    tasks: dict[object, str] = {}
+    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="evidence") as executor:
+        for claim in claims[:3]:
+            for provider_name, provider in providers:
+                tasks[executor.submit(provider, claim)] = provider_name
+        for future in as_completed(tasks):
+            if len(found) >= 8:
+                continue
+            provider_name = tasks[future]
             try:
-                results = provider(claim)
+                results = future.result()
             except (HTTPError, URLError, TimeoutError, ValueError, UnicodeError, OSError, json.JSONDecodeError) as error:
                 provider_errors.append(provider_name)
                 logger.info("%s evidence search failed: %s", provider_name, error)
@@ -414,7 +446,7 @@ def _search_evidence_sources(claims: list[str], source_domain: str) -> tuple[lis
                 result["type"] = _evidence_label(str(result.get("type") or "Evidence source"), int(result.get("relevance") or 0))
                 found.append(result)
                 if len(found) >= 8:
-                    return found, " ".join(evidence_text_parts), "Free evidence search completed"
+                    break
 
     if found:
         return found, " ".join(evidence_text_parts), "Free evidence search completed"
@@ -436,13 +468,13 @@ def _build_claim_reports(
         source_overlap = _claim_overlap_score(claim, source_context_text)
         independent_overlap = _claim_overlap_score(claim, independent_evidence_text)
         if independent_overlap >= 80:
-            status = "Supported by independent evidence"
+            status = "Possible corroboration found"
             confidence = min(95, round(independent_overlap * 0.7 + source_score * 0.3))
-            evidence = "Independent search results contain strong overlap with this claim."
+            evidence = "Independent search results contain strong text overlap. Review the linked source to confirm whether it supports the exact claim."
         elif independent_overlap >= 55:
-            status = "Partially supported by independent evidence"
+            status = "Related evidence found"
             confidence = min(82, round(independent_overlap * 0.7 + source_score * 0.3))
-            evidence = "Independent search results contain partial overlap. Manual verification is still recommended."
+            evidence = "Independent search results contain partial text overlap. This is a lead for manual verification, not proof."
         elif fetched and source_overlap >= 75 and source_score >= 75:
             status = "Supported by source context only"
             confidence = min(78, round((source_overlap + source_score) / 2))
@@ -504,7 +536,7 @@ def _build_source_signals(
     reputation_label, source_score, _source_type = _source_reputation(domain)
     signals = [
         {"label": "Final Domain", "value": domain or "Unavailable", "status": "positive" if fetched else "warning"},
-        {"label": "Reputation Rule", "value": reputation_label, "status": "positive" if source_score >= 75 else "warning" if source_score >= 50 else "negative"},
+        {"label": "Domain Context Rule", "value": reputation_label, "status": "positive" if source_score >= 75 else "warning" if source_score >= 50 else "negative"},
         {"label": "HTTPS", "value": "Secure URL" if final.startswith("https://") else "Not HTTPS", "status": "positive" if final.startswith("https://") else "negative"},
         {"label": "Page Fetch", "value": "Fetched successfully" if fetched else "Could not fetch page", "status": "positive" if fetched else "negative"},
         {"label": "Content Type", "value": content_type or "Unavailable", "status": "positive" if "html" in content_type else "warning"},
@@ -539,9 +571,9 @@ def _score_breakdown(
     transparency = min(95, transparency)
 
     breakdown = [
-        {"label": "Source Reputation", "score": source_score, "weight": 25},
-        {"label": "Evidence Match", "score": evidence_score, "weight": 35},
-        {"label": "Claim Consistency", "score": claim_consistency, "weight": 20},
+        {"label": "Source Context", "score": source_score, "weight": 25},
+        {"label": "Evidence Relevance", "score": evidence_score, "weight": 35},
+        {"label": "Claim Coverage", "score": claim_consistency, "weight": 20},
         {"label": "Language Quality", "score": language_score, "weight": 10},
         {"label": "Transparency", "score": transparency, "weight": 10},
     ]
@@ -549,12 +581,48 @@ def _score_breakdown(
     return breakdown, max(5, min(97, weighted))
 
 
-def _bias_label(score: int) -> str:
-    if score >= 75:
-        return "Low Bias"
-    if score >= 50:
-        return "Medium Bias"
-    return "High Bias"
+def _language_label(text: str) -> str:
+    """Describe observable language without inferring political or factual bias."""
+    lowered = text.lower()
+    loaded = ("shocking", "breaking", "miracle", "secret", "urgent", "must see", "doctors hate", "won't believe")
+    count = sum(1 for term in loaded if term in lowered)
+    if count >= 2:
+        return "Strong loaded-language signal"
+    if count == 1:
+        return "Some loaded-language signal"
+    return "No strong loaded-language signal"
+
+
+def _analysis_state(
+    claim_reports: list[dict[str, object]],
+    evidence_sources: list[dict[str, object]],
+    fetched: bool,
+) -> tuple[str, int, str, list[str]]:
+    """Return an evidence state and confidence without claiming factual accuracy."""
+    independent = [
+        report for report in claim_reports
+        if any(term in str(report.get("status", "")).lower() for term in ("corroboration", "related evidence"))
+    ]
+    limitations: list[str] = []
+    if not fetched:
+        limitations.append("No verified publisher page was available.")
+    if not claim_reports:
+        limitations.append("No checkable factual claim was extracted.")
+    if not evidence_sources:
+        limitations.append("No independent evidence source was retrieved.")
+    limitations.append("Text overlap can identify related sources, but cannot prove that a claim is true.")
+
+    if not claim_reports or not evidence_sources or not independent:
+        confidence = 22 + (12 if fetched else 0) + min(12, len(claim_reports) * 4)
+        return "insufficient_evidence", min(49, confidence), "Insufficient evidence", limitations
+
+    strong = sum(1 for report in independent if int(report.get("confidence", 0)) >= 70)
+    if strong == len(claim_reports):
+        confidence = min(90, 58 + strong * 6 + (8 if fetched else 0))
+        return "supported", confidence, "Possible corroboration found", limitations
+
+    confidence = min(78, 48 + len(independent) * 5 + (8 if fetched else 0))
+    return "mixed", confidence, "Mixed evidence", limitations
 
 
 def _emotion_label(text: str) -> str:
@@ -575,7 +643,7 @@ def _reliability_label(score: int) -> str:
 
 
 def _build_chips(mode: str, fetched: bool, score: int, source_title: str, excerpt: str) -> list[str]:
-    chips = [f"✓ Input mode: {mode}", f"⚡ {_bias_label(score)}"]
+    chips = [f"✓ Input mode: {mode}", f"⚡ Verification readiness: {score}/100"]
     if fetched:
         chips.insert(1, "✓ Page fetched")
     elif mode == "url":
@@ -620,23 +688,23 @@ def build_bootstrap_data() -> dict:
     return {
         "landing": {
             "features": [
-                {"icon": "Search", "title": "Content Analyzer", "description": "Analyze articles, social media posts, and websites for credibility and bias."},
-                {"icon": "Eye", "title": "Deepfake Detector", "description": "Detect manipulated images, videos, and audio using advanced AI technology."},
+                {"icon": "Search", "title": "Evidence-Guided Analyzer", "description": "Extract claims, inspect source context, and show evidence with explicit uncertainty."},
+                {"icon": "Eye", "title": "Media Integrity Check", "description": "Inspect signatures, container structure, hashes, and embedded provenance markers."},
                 {"icon": "BookOpen", "title": "Learning Hub", "description": "Interactive lessons and quizzes to develop critical thinking skills."},
                 {"icon": "Shield", "title": "Source Verification", "description": "Check the reliability and reputation of news sources and publishers."},
                 {"icon": "Award", "title": "Gamified Learning", "description": "Earn XP, badges, and climb leaderboards while building media literacy."},
                 {"icon": "Users", "title": "Teacher Dashboard", "description": "Track student progress and assign media literacy challenges."},
             ],
             "stats": [
-                {"value": "500K+", "label": "Active Users"},
-                {"value": "2M+", "label": "Content Analyzed"},
-                {"value": "95%", "label": "Accuracy Rate"},
-                {"value": "150+", "label": "Schools"},
+                {"value": "5", "label": "Open Evidence Sources"},
+                {"value": "3", "label": "Learning-to-Action Stages"},
+                {"value": "100%", "label": "Visible Score Components"},
+                {"value": "30", "label": "Curated Regression Cases"},
             ],
             "testimonials": [
-                {"name": "Sarah Chen", "role": "High School Student", "content": "TruthQuest AI helped me become more critical of what I see online. I now verify sources before sharing!", "avatar": "SC"},
-                {"name": "Mr. Johnson", "role": "Media Studies Teacher", "content": "An invaluable tool for teaching media literacy. My students are more engaged than ever.", "avatar": "MJ"},
-                {"name": "Alex Rodriguez", "role": "College Student", "content": "The deepfake detector is amazing! It's helped me identify misinformation multiple times.", "avatar": "AR"},
+                {"name": "Analyze", "role": "Student workflow", "content": "Turn a viral post into claims, evidence links, confidence, limitations, and next steps.", "avatar": "01"},
+                {"name": "Learn", "role": "Targeted intervention", "content": "Convert analysis weaknesses into a short lesson and source-ranking challenge.", "avatar": "02"},
+                {"name": "Act", "role": "Teacher workflow", "content": "Give educators an intervention-ready summary with demo outcomes clearly labeled.", "avatar": "03"},
             ],
         },
         "dashboard": {
@@ -736,7 +804,7 @@ def build_bootstrap_data() -> dict:
                 {"name": "Fact Checking", "value": 85},
                 {"name": "Source Verification", "value": 78},
                 {"name": "Bias Detection", "value": 72},
-                {"name": "Deepfake Detection", "value": 65},
+                {"name": "Media Provenance", "value": 65},
             ],
             "completionData": [
                 {"name": "Completed", "value": 24, "color": "#22C55E"},
@@ -753,7 +821,7 @@ def build_bootstrap_data() -> dict:
             ],
             "recentAssignments": [
                 {"title": "Media Bias Analysis", "due": "2 days", "submitted": 28, "total": 35, "status": "active"},
-                {"title": "Deepfake Detection Quiz", "due": "5 days", "submitted": 15, "total": 35, "status": "active"},
+                {"title": "Media Provenance Quiz", "due": "5 days", "submitted": 15, "total": 35, "status": "active"},
                 {"title": "Source Verification Exercise", "due": "Completed", "submitted": 35, "total": 35, "status": "completed"},
             ],
         },
@@ -780,17 +848,17 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
             "sourceTitle": "",
             "sourceExcerpt": "",
             "score": 0,
-            "biasLabel": "High Bias",
+            "biasLabel": "Not assessed",
             "emotionLabel": "Low",
             "reliabilityLabel": "Low",
-            "factAccuracy": "0%",
+            "factAccuracy": "Insufficient evidence",
             "summary": "No input provided for analysis.",
-            "chips": ["⚠ High Bias", "⚠ Input missing", "⚠ Try again"],
+            "chips": ["⚠ Input missing", "⚠ Insufficient evidence", "⚠ Try again"],
             "metrics": [
-                {"label": "Bias Indicator", "value": "High Bias", "sub": "Input missing"},
-                {"label": "Emotional Manipulation", "value": "Low", "sub": "No content provided"},
-                {"label": "Source Reliability", "value": "Low", "sub": "Input missing"},
-                {"label": "Fact Accuracy", "value": "0%", "sub": "Cannot verify empty input"},
+                {"label": "Language Signal", "value": "Not assessed", "sub": "Input missing"},
+                {"label": "Emotional Language", "value": "Not assessed", "sub": "No content provided"},
+                {"label": "Source Context", "value": "Unavailable", "sub": "Input missing"},
+                {"label": "Evidence Status", "value": "Insufficient evidence", "sub": "Cannot verify empty input"},
             ],
             "recommendations": [
                 {"text": "Paste a URL, article text, or claim before analyzing.", "done": False},
@@ -800,6 +868,9 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
             "claims": [],
             "evidenceSources": [],
             "scoreBreakdown": [],
+            "analysisStatus": "insufficient_evidence",
+            "analysisConfidence": 0,
+            "limitations": ["No content was supplied."],
             "xpEarned": 0,
         }
 
@@ -819,7 +890,7 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
         try:
             source_title, source_excerpt, content_type, final_url, page_text, links, page_metadata = _fetch_url_preview(analyzed_text)
             fetched = True
-        except (HTTPError, URLError, TimeoutError, ValueError, UnicodeError, OSError):
+        except (HTTPError, URLError, TimeoutError, ValueError, UnicodeError, OSError, InvalidURL):
             content_type = "text/plain"
             page_text = analyzed_text
     else:
@@ -865,15 +936,18 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
         has_metadata=has_metadata,
         evidence_sources=evidence_sources,
     )
-    bias = _bias_label(score)
+    language_label = _language_label(scoring_text)
     emotion = _emotion_label(scoring_text)
-    reliability = _reliability_label(score)
-    fact_accuracy = f"{score}%"
+    reliability = _reliability_label(source_score)
+    analysis_status, analysis_confidence, evidence_label, limitations = _analysis_state(
+        claim_reports, evidence_sources, fetched,
+    )
+    fact_accuracy = evidence_label
     extracted = source_excerpt or page_text[:500] or analyzed_text
     if fetched and claims:
         summary = (
             f"Analyzed {source_label} with {len(claims)} factual claim(s) extracted. "
-            "The score now combines source reputation, claim/evidence context, language quality, and transparency."
+            "Verification readiness combines source context, related evidence, language quality, and transparency; it is not a truth probability."
         )
     elif mode == "url":
         summary = (
@@ -896,23 +970,26 @@ def build_content_analysis_response(mode: str, user_input: str) -> dict:
         "sourceTitle": source_title,
         "sourceExcerpt": extracted,
         "score": score,
-        "biasLabel": bias,
+        "biasLabel": language_label,
         "emotionLabel": emotion,
         "reliabilityLabel": reliability,
         "factAccuracy": fact_accuracy,
         "summary": summary,
         "chips": chips,
         "metrics": [
-            {"label": "Bias Indicator", "value": bias, "sub": "Derived from the supplied URL or text"},
-            {"label": "Emotional Manipulation", "value": emotion, "sub": "Detected tone markers in the provided content"},
-            {"label": "Source Reliability", "value": reliability, "sub": f"Domain/source score: {source_score}/100"},
-            {"label": "Evidence Confidence", "value": fact_accuracy, "sub": "Weighted confidence from transparent signals"},
+            {"label": "Language Signal", "value": language_label, "sub": "Observable loaded-language markers; not a political-bias judgment"},
+            {"label": "Emotional Language", "value": emotion, "sub": "Detected tone markers in the provided content"},
+            {"label": "Source Context", "value": reliability, "sub": f"Rule-based domain/source score: {source_score}/100"},
+            {"label": "Evidence Status", "value": evidence_label, "sub": f"Analysis confidence: {analysis_confidence}%"},
         ],
         "recommendations": _build_recommendations(mode, score, fetched, source_title, extracted),
         "sourceSignals": source_signals,
         "claims": claim_reports,
         "evidenceSources": evidence_sources,
         "scoreBreakdown": score_breakdown,
+        "analysisStatus": analysis_status,
+        "analysisConfidence": analysis_confidence,
+        "limitations": limitations,
         "xpEarned": 25 if score >= 75 else 15,
     }
 
@@ -1121,6 +1198,9 @@ def _build_image_content_analysis_response(user_input: str) -> dict:
             "claims": [],
             "evidenceSources": [],
             "scoreBreakdown": [],
+            "analysisStatus": "insufficient_evidence",
+            "analysisConfidence": 0,
+            "limitations": ["The uploaded image could not be decoded."],
             "xpEarned": 0,
         }
 
@@ -1211,7 +1291,7 @@ def _build_image_content_analysis_response(user_input: str) -> dict:
     recommendations = [
         {"text": "Use reverse image search to check whether this image appeared earlier in a different context.", "done": False},
         {"text": "Ask for the original source, capture date, and uncropped version before sharing.", "done": False},
-        {"text": "Run the same file through Deepfake Detector for manipulation-risk scoring.", "done": False},
+        {"text": "Run the same file through Media Integrity Check for additional provenance signals.", "done": False},
     ]
     if ocr_text:
         recommendations.insert(0, {"text": "Verify the extracted OCR text as a separate claim before sharing the image.", "done": False})
@@ -1227,7 +1307,7 @@ def _build_image_content_analysis_response(user_input: str) -> dict:
         "biasLabel": "Image Metadata",
         "emotionLabel": "N/A",
         "reliabilityLabel": _reliability_label(score),
-        "factAccuracy": f"{score}%",
+        "factAccuracy": "File review only",
         "summary": " ".join(summary_parts),
         "chips": [
             "✓ Local image analysis",
@@ -1252,6 +1332,12 @@ def _build_image_content_analysis_response(user_input: str) -> dict:
             {"label": "Provenance Metadata", "score": provenance_score, "weight": 20},
             {"label": "OCR Text Claims", "score": ocr_score, "weight": 15},
             {"label": "File Quality", "score": quality_score, "weight": 10},
+        ],
+        "analysisStatus": "insufficient_evidence",
+        "analysisConfidence": 42 if detected_type == "image" else 18,
+        "limitations": [
+            "File and provenance checks do not determine whether the depicted event is real.",
+            "Absence of generator metadata does not prove authenticity.",
         ],
         "xpEarned": 25 if score >= 70 else 15,
     }
@@ -1290,21 +1376,21 @@ def build_deepfake_analysis_response(
     probability = max(5, min(95, probability))
 
     if probability >= 70:
-        verdict = "High Manipulation Risk"
-        summary = "The uploaded file contains strong integrity or generator signals that need manual verification before it is shared."
+        verdict = "High File-Integrity Risk"
+        summary = "The uploaded file contains strong integrity or generator-marker signals that need manual provenance review before sharing."
     elif probability >= 45:
-        verdict = "Needs Manual Review"
-        summary = "The uploaded file has some weak or conflicting signals. This is not proof of a deepfake, but it should be verified with the original source."
+        verdict = "Needs Manual Provenance Review"
+        summary = "The uploaded file has weak or conflicting integrity signals. This does not establish manipulation; verify it with the original source."
     else:
-        verdict = "No Strong Synthetic Signals Found"
-        summary = "The uploaded file passed the available signature and metadata checks. This does not prove authenticity, but no strong synthetic markers were found."
+        verdict = "No Strong Integrity Warnings Found"
+        summary = "The file passed the available signature and metadata checks. This does not prove authenticity or rule out visual or audio manipulation."
 
     indicator_values = [
         ("File Signature Match", 100 - signature_score),
         ("Metadata Integrity", 100 - metadata_score),
         ("Container Structure", 100 - structure_score),
         ("Embedded Generator Markers", generator_score),
-        ("Manipulation Risk Estimate", probability),
+        ("Integrity Review Score", probability),
     ]
     indicators = [
         {
@@ -1334,7 +1420,7 @@ def build_deepfake_analysis_response(
         "analysisId": str(uuid4()),
         "score": probability,
         "verdict": verdict,
-        "probabilityLabel": f"{probability}% Manipulation Risk",
+        "probabilityLabel": f"{probability}% Integrity Review Score",
         "probability": probability,
         "summary": summary,
         "indicators": indicators,

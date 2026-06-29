@@ -208,6 +208,9 @@ export type ContentAnalysisResponse = {
     score: number;
     weight: number;
   }>;
+  analysisStatus: "supported" | "mixed" | "insufficient_evidence";
+  analysisConfidence: number;
+  limitations: string[];
   xpEarned: number;
 };
 
@@ -328,7 +331,7 @@ async function analyzeDeepfakeLocally(request: DeepfakeAnalysisRequest, backendE
   const generatorScore = markers.length ? 88 : 12;
   const contentScore = Math.min(95, 20 + (tooSmall ? 25 : 0) + (!typeMatch ? 30 : 0) + (markers.length ? 25 : 0));
   const probability = Math.max(5, Math.min(95, Math.round(signatureScore * 0.25 + metadataScore * 0.2 + structureScore * 0.2 + generatorScore * 0.2 + contentScore * 0.15)));
-  const verdict = probability >= 70 ? "High Manipulation Risk" : probability >= 45 ? "Needs Manual Review" : "No Strong Synthetic Signals Found";
+  const verdict = probability >= 70 ? "High File-Integrity Risk" : probability >= 45 ? "Needs Manual Provenance Review" : "No Strong Integrity Warnings Found";
   const hash = await sha256Hex(bytes);
   const dimensionValue = dimensions ? `${dimensions.width} x ${dimensions.height}` : "Unavailable";
   const markerValue = markers.length ? markers.join(", ") : "None found";
@@ -337,16 +340,16 @@ async function analyzeDeepfakeLocally(request: DeepfakeAnalysisRequest, backendE
     ["Metadata Integrity", 100 - metadataScore, metadataScore],
     ["Container Structure", 100 - structureScore, structureScore],
     ["Embedded Generator Markers", generatorScore, generatorScore],
-    ["Manipulation Risk Estimate", probability, probability],
+    ["Integrity Review Score", probability, probability],
   ] as const;
 
   return {
     analysisId: crypto.randomUUID(),
     score: probability,
     verdict,
-    probabilityLabel: `${probability}% Manipulation Risk`,
+    probabilityLabel: `${probability}% Integrity Review Score`,
     probability,
-    summary: "Backend analysis was unavailable, so TruthQuest ran a local file integrity check in your browser.",
+    summary: "Backend analysis was unavailable, so TruthQuest ran a local file and provenance check in your browser. This is not a visual or audio deepfake classification.",
     indicators: indicatorValues.map(([label, value, risk]) => ({ label, value, risk: riskName(risk), color: riskColor(risk) })),
     metadata: [
       { label: "Analysis Mode", value: "Local browser fallback" },
@@ -392,10 +395,70 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 export async function analyzeContent(request: ContentAnalysisRequest): Promise<ContentAnalysisResponse> {
-  return apiFetch<ContentAnalysisResponse>("/api/v1/content/analyze", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  try {
+    return await apiFetch<ContentAnalysisResponse>("/api/v1/content/analyze", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  } catch (error) {
+    if (request.mode === "image") throw error;
+    const text = request.input.trim();
+    const lowered = text.toLowerCase();
+    const loadedTerms = ["breaking", "shocking", "miracle", "secret", "urgent", "must see", "doctors hate", "won't believe"];
+    const loadedCount = loadedTerms.filter((term) => lowered.includes(term)).length;
+    const languageLabel = loadedCount >= 2 ? "Strong loaded-language signal" : loadedCount === 1 ? "Some loaded-language signal" : "No strong loaded-language signal";
+    const claimPatterns = /\b(?:\d+(?:\.\d+)?%?|reported|confirmed|claimed|found|shows|increased|decreased|study|report|data|survey|policy|law|court|government|research|official)\b/i;
+    const claims = text.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.length >= 35 && sentence.length <= 260 && claimPatterns.test(sentence)).slice(0, 5);
+    const languageScore = Math.max(10, 78 - loadedCount * 10);
+    const sourceScore = request.mode === "url" ? 35 : text.length >= 120 ? 48 : 38;
+    const score = Math.round(sourceScore * 0.3 + 30 * 0.35 + (claims.length ? 48 : 30) * 0.2 + languageScore * 0.1 + 25 * 0.05);
+    const backendMessage = error instanceof Error ? error.message : "Backend unavailable";
+    return {
+      analysisId: crypto.randomUUID(),
+      sourceUrl: request.mode === "url" ? text : "",
+      sourceTitle: "Offline browser analysis",
+      sourceExcerpt: text.slice(0, 500),
+      score,
+      biasLabel: languageLabel,
+      emotionLabel: loadedCount ? "High" : "Low",
+      reliabilityLabel: "Unavailable",
+      factAccuracy: "Insufficient evidence",
+      summary: "The live backend was unavailable. This browser-only fallback identified language and claim patterns, but did not fetch the publisher or search independent evidence.",
+      chips: ["⚠ Offline fallback", `✓ Claims: ${claims.length}`, "⚠ Insufficient evidence"],
+      metrics: [
+        { label: "Language Signal", value: languageLabel, sub: "Browser pattern check only" },
+        { label: "Emotional Language", value: loadedCount ? "High" : "Low", sub: "Observable wording markers" },
+        { label: "Source Context", value: "Unavailable", sub: "Backend could not fetch the source" },
+        { label: "Evidence Status", value: "Insufficient evidence", sub: "No independent search was run" },
+      ],
+      recommendations: [
+        { text: "Start the FastAPI backend to fetch the source and search independent evidence.", done: false },
+        { text: "Open the original source and identify its author, date, and primary evidence.", done: false },
+        { text: "Cross-check each extracted claim against two independent sources.", done: false },
+      ],
+      sourceSignals: [
+        { label: "Analysis Mode", value: "Offline browser fallback", status: "warning" },
+        { label: "Backend", value: backendMessage.slice(0, 100), status: "warning" },
+      ],
+      claims: claims.map((claim) => ({ claim, status: "Needs evidence", confidence: 20, evidence: "Claim pattern extracted locally; no source or evidence verification was performed." })),
+      evidenceSources: [],
+      scoreBreakdown: [
+        { label: "Source Context", score: sourceScore, weight: 30 },
+        { label: "Evidence Match", score: 30, weight: 35 },
+        { label: "Claim Extraction", score: claims.length ? 48 : 30, weight: 20 },
+        { label: "Language Quality", score: languageScore, weight: 10 },
+        { label: "Transparency", score: 25, weight: 5 },
+      ],
+      analysisStatus: "insufficient_evidence",
+      analysisConfidence: 18,
+      limitations: [
+        "The publisher page was not fetched.",
+        "No independent evidence source was searched.",
+        "Pattern matching cannot determine whether a claim is true.",
+      ],
+      xpEarned: 10,
+    };
+  }
 }
 
 export async function analyzeDeepfake(request: DeepfakeAnalysisRequest): Promise<DeepfakeAnalysisResponse> {

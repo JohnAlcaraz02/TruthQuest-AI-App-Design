@@ -13,7 +13,7 @@ import {
   Brain,
 } from "lucide-react";
 import CredibilityMeter from "../../components/CredibilityMeter";
-import { analyzeContent, type ContentAnalysisMode } from "../../services/truthquestApi";
+import { analyzeContent, type ContentAnalysisMode, type ContentAnalysisResponse } from "../../services/truthquestApi";
 
 export default function MobileAnalyzer() {
   const [activeTab, setActiveTab] = useState<ContentAnalysisMode>("url");
@@ -21,8 +21,6 @@ export default function MobileAnalyzer() {
   const [text, setText] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ReturnType<typeof analyzeContent extends (args: infer A) => infer R ? R : null>((analyzeContent as unknown as (args?: { mode?: string; input?: string }) => Promise<unknown>)() as ReturnType<typeof analyzeContent> | null);
-  
   const [analysis, setAnalysis] = useState<ContentAnalysisResponse | null>(null);
 
   const reset = () => {

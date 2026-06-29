@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "test:backend": "python3 -m unittest discover -s backend/tests -v",
+    "evaluate": "python3 -m backend.evaluation.run"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

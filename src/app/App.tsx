@@ -59,6 +59,13 @@ function screenFromPath(pathname: string): Screen {
   return pathScreens[pathname.replace(/\/$/, "") || "/"] ?? "landing";
 }
 
+function detectContentAnalysisMode(input: string): "url" | "text" {
+  const trimmed = input.trim();
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return "url";
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/\S*)?$/i.test(trimmed)) return "url";
+  return "text";
+}
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const weeklyData = [
   { day: "Mon", score: 72, articles: 4 },
@@ -297,7 +304,7 @@ const lessonLibrary: Record<string, {
       breakdown: ["Check the school's official channels.", "Look for the full-length video.", "Inspect whether the audio and mouth movement align.", "Treat the clip as unverified until the source confirms it."],
     },
     commonMistake: "Do not declare media real or fake based only on one artifact. Compression, lighting, and low quality can create false alarms.",
-    practice: "Upload a test image to the Deepfake Detector and explain which signals were strong or weak.",
+    practice: "Upload a test image to Media Integrity Check and explain which file or provenance signals were strong or weak.",
     reflection: "Which evidence would change your confidence most: official source confirmation, original file, reverse search result, or metadata?",
     checklist: ["Check source", "Inspect metadata", "Reverse search", "Avoid sharing until verified"],
     vocabulary: [
@@ -515,7 +522,7 @@ function challengeKeywords(value: string) {
 const navItems: { icon: React.ReactNode; label: string; screen: Screen }[] = [
   { icon: <Home size={18} />, label: "Home", screen: "dashboard" },
   { icon: <Search size={18} />, label: "Analyze", screen: "analyzer" },
-  { icon: <Shield size={18} />, label: "Deepfake", screen: "deepfake" },
+  { icon: <Shield size={18} />, label: "Media Integrity", screen: "deepfake" },
   { icon: <BookOpen size={18} />, label: "Learning Hub", screen: "learning" },
   { icon: <Trophy size={18} />, label: "Challenges", screen: "quiz" },
   { icon: <User size={18} />, label: "Profile", screen: "profile" },
@@ -530,25 +537,25 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const features = [
-    { icon: <Search size={22} />, title: "Content Analyzer", desc: "Paste any URL or text. Get instant credibility scores, bias indicators, and source reliability ratings.", color: BLUE },
-    { icon: <Shield size={22} />, title: "Deepfake Detector", desc: "Upload images, videos, or audio clips. Our AI detects facial inconsistencies, audio anomalies, and metadata tampering.", color: TEAL },
+    { icon: <Search size={22} />, title: "Evidence-Guided Analyzer", desc: "Extract checkable claims, inspect source context, find related evidence, and show uncertainty instead of issuing a black-box truth verdict.", color: BLUE },
+    { icon: <Shield size={22} />, title: "Media Integrity Check", desc: "Inspect file signatures, dimensions, hashes, container structure, and embedded generator or content-credential markers.", color: TEAL },
     { icon: <BookOpen size={22} />, title: "Learning Hub", desc: "Gamified lessons, quizzes, and challenges that build media literacy skills through interactive experiences.", color: PURPLE },
-    { icon: <Brain size={22} />, title: "AI Explanations", desc: "Every result comes with clear, jargon-free explanations so you learn while you verify.", color: AMBER },
+    { icon: <Brain size={22} />, title: "Explainable Signals", desc: "Every result separates source, evidence, language, and confidence signals so users can inspect the reasoning.", color: AMBER },
     { icon: <Trophy size={22} />, title: "Leaderboards & XP", desc: "Earn points, unlock badges, and compete with classmates to become a certified Truth Guardian.", color: GREEN },
     { icon: <GraduationCap size={22} />, title: "Teacher Dashboard", desc: "Assign challenges, track student progress, and measure class-wide media literacy growth in real time.", color: "#EF4444" },
   ];
 
   const stats = bootstrap?.landing?.stats ?? [
-    { value: "2.4M+", label: "Articles Analyzed" },
-    { value: "98K+", label: "Active Students" },
-    { value: "340+", label: "Schools Using TruthQuest" },
-    { value: "89%", label: "Accuracy Rate" },
+    { value: "5", label: "Open Evidence Sources" },
+    { value: "3", label: "Learning-to-Action Stages" },
+    { value: "100%", label: "Visible Score Components" },
+    { value: "30", label: "Curated Regression Cases" },
   ];
 
   const testimonials = bootstrap?.landing?.testimonials ?? [
-    { name: "Ms. Adaeze Nwosu", role: "Media Studies Teacher, Lagos", content: "TruthQuest changed how my students engage with social media. They now naturally question sources before sharing anything.", avatar: "AN" },
-    { name: "Kwame Asante", role: "University Student, Accra", content: "I caught three misinformation posts in my WhatsApp group within a week of using TruthQuest. The deepfake detector is mind-blowing.", avatar: "KA" },
-    { name: "Dr. Fatima Al-Hassan", role: "Digital Literacy Researcher", content: "The most complete media literacy platform I have reviewed. The gamification keeps students genuinely engaged.", avatar: "FA" },
+    { name: "Analyze", role: "Student workflow", content: "Turn a viral post into explicit claims, evidence links, confidence, limitations, and concrete verification steps.", avatar: "01" },
+    { name: "Learn", role: "Targeted intervention", content: "Convert the weaknesses found during analysis into a short lesson and source-ranking challenge.", avatar: "02" },
+    { name: "Act", role: "Teacher workflow", content: "Give educators an intervention-ready summary while keeping simulated demo outcomes clearly labeled.", avatar: "03" },
   ];
 
   return (
@@ -607,7 +614,7 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
               with Confidence.
             </h1>
             <p className="text-base sm:text-xl text-slate-500 leading-relaxed mb-8 max-w-[342px] sm:max-w-md">
-              AI-powered media literacy for the next generation. Learn to detect misinformation, verify sources, and think critically.
+              Evidence-guided media literacy for the next generation. Inspect claims, verify sources, and learn what uncertainty means before sharing.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mb-10">
               <button onClick={() => onNavigate("analyzer")} className="w-full max-w-[342px] sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
@@ -625,7 +632,7 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
                   <div key={a} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>{a}</div>
                 ))}
               </div>
-              <p className="text-sm text-slate-500 min-w-0 leading-snug"><span className="font-semibold text-slate-700">98,000+</span> students already verifying smarter</p>
+              <p className="text-sm text-slate-500 min-w-0 leading-snug"><span className="font-semibold text-slate-700">Hackathon prototype</span> · transparent by design</p>
             </div>
           </div>
 
@@ -639,17 +646,17 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
                   </div>
                   <span className="font-semibold text-slate-800 text-sm">Content Analysis</span>
                 </div>
-                <Chip label="AI Verified" color={GREEN} bg={GREEN + "15"} />
+                <Chip label="Evidence review" color={BLUE} bg={BLUE + "15"} />
               </div>
               <div className="bg-slate-50 rounded-xl p-3 mb-4 text-xs font-mono text-slate-500 border border-slate-100 break-all">
                 https://example-news.com/viral-story-2024
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {[
-                  { label: "Credibility", value: "87/100", color: GREEN },
-                  { label: "Bias Level", value: "Low", color: TEAL },
+                  { label: "Readiness", value: "72/100", color: AMBER },
+                  { label: "Evidence", value: "Mixed", color: AMBER },
                   { label: "Emotional Tone", value: "Neutral", color: BLUE },
-                  { label: "Source Trust", value: "High", color: GREEN },
+                  { label: "Confidence", value: "64%", color: BLUE },
                 ].map(m => (
                   <div key={m.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                     <p className="text-xs text-slate-400 mb-1">{m.label}</p>
@@ -660,7 +667,7 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
               <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
                 <div className="flex items-start gap-2">
                   <Brain size={14} style={{ color: BLUE }} className="mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-blue-700 leading-relaxed">This article cites verified government data. The author has an established track record. Cross-reference with 2 additional sources for full confidence.</p>
+                  <p className="text-xs text-blue-700 leading-relaxed">Two related sources were found. Review whether they support the exact claim; related text is not proof.</p>
                 </div>
               </div>
             </div>
@@ -721,7 +728,7 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
           <div className="grid md:grid-cols-4 gap-6 relative">
             {[
               { step: "01", title: "Paste or Upload", desc: "Drop in any URL, text, image, video or audio you want to verify.", icon: <Upload size={20} /> },
-              { step: "02", title: "AI Analysis", desc: "Our models analyze credibility, bias, emotion, and source history instantly.", icon: <Brain size={20} /> },
+              { step: "02", title: "Signal Analysis", desc: "TruthQuest separates source context, evidence matches, language signals, and analysis confidence.", icon: <Brain size={20} /> },
               { step: "03", title: "Get Insights", desc: "Receive a clear score, plain-English explanation, and recommended next steps.", icon: <Layers size={20} /> },
               { step: "04", title: "Learn & Level Up", desc: "Every analysis is a lesson. Earn XP, unlock badges, and track your growth.", icon: <Trophy size={20} /> },
             ].map((s, i) => (
@@ -744,8 +751,8 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
       {/* Stats */}
       <section id="stats" style={{ background: `linear-gradient(135deg, ${BLUE}, #1e40af)` }} className="py-20">
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-3">Making real impact in schools worldwide</h2>
-          <p className="text-blue-200 mb-14">Numbers that prove media literacy education works.</p>
+          <h2 className="text-3xl font-extrabold text-white mb-3">Prototype capabilities we can demonstrate</h2>
+          <p className="text-blue-200 mb-14">Measured product facts—not invented traction or accuracy.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map(s => (
               <div key={s.label}>
@@ -761,16 +768,16 @@ function LandingPage({ onNavigate, bootstrap }: { onNavigate: (screen: Screen) =
       <section id="testimonials" className="py-24 bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: AMBER }}>Real Stories</p>
-            <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">Trusted by students and educators</h2>
+            <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: AMBER }}>Core Workflow</p>
+            <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">From suspicious post to teacher action</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map(t => (
               <div key={t.name} className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
                 <div className="flex gap-1 mb-4">
-                  {[...Array(5)].map((_, i) => <Star key={i} size={14} fill={AMBER} color={AMBER} />)}
+                  {[...Array(3)].map((_, i) => <Star key={i} size={14} fill={AMBER} color={AMBER} />)}
                 </div>
-                <p className="text-slate-700 text-sm leading-relaxed mb-6">"{t.content}"</p>
+                <p className="text-slate-700 text-sm leading-relaxed mb-6">{t.content}</p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>{t.avatar}</div>
                   <div>
@@ -854,7 +861,7 @@ function LegalPage({ type, onNavigate }: { type: "privacy" | "terms"; onNavigate
   const isPrivacy = type === "privacy";
   const sections = isPrivacy
     ? [
-      ["Data Use", "TruthQuest AI uses submitted URLs, text, and uploaded media to generate credibility and media-literacy feedback. A production deployment should publish its retention period, school data controls, and subprocessors before launch."],
+      ["Data Use", "This prototype processes submitted URLs, text, and uploaded media in memory to generate verification and media-literacy feedback. It has no account database. A production deployment must publish retention, school-data controls, and subprocessors before launch."],
       ["Student Safety", "Schools should configure accounts, classroom access, and reporting rules according to local policy. The app should not be used to collect sensitive student information unless a signed data agreement is in place."],
       ["Contact", "For privacy questions, contact hello@truthquest.ai."],
     ]
@@ -1137,7 +1144,7 @@ function Dashboard({ setScreen, bootstrap, progress }: { setScreen: (s: Screen) 
         {/* Score trend */}
         <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-900">Credibility Score Trend</h3>
+            <h3 className="font-bold text-slate-900">Media Literacy Score Trend</h3>
             <Chip label="This Week" color={BLUE} bg={BLUE + "12"} />
           </div>
           <ResponsiveContainer width="100%" height={180}>
@@ -1316,6 +1323,11 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
   const claims = analysis?.claims ?? [];
   const evidenceSources = analysis?.evidenceSources ?? [];
   const scoreBreakdown = analysis?.scoreBreakdown ?? [];
+  const analysisStatus = analysis?.analysisStatus ?? "insufficient_evidence";
+  const analysisConfidence = analysis?.analysisConfidence ?? 0;
+  const limitations = analysis?.limitations ?? [
+    "This result came from an older or partial analyzer response. Restart the backend to load the current evidence and confidence fields.",
+  ];
   const statusColor = (status: string) => {
     if (status === "positive") return GREEN;
     if (status === "negative") return "#EF4444";
@@ -1469,7 +1481,7 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
             <div className="h-full rounded-full animate-pulse" style={{ width: "60%", background: `linear-gradient(90deg, ${BLUE}, ${TEAL})` }} />
           </div>
           <div className="flex flex-wrap gap-2 justify-center">
-            {["Checking sources", "Analyzing tone", "Detecting bias", "Verifying claims"].map(s => (
+            {["Checking sources", "Analyzing language", "Extracting claims", "Finding related evidence"].map(s => (
               <div key={s} className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 rounded-full text-xs text-blue-600 font-medium">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                 {s}
@@ -1488,8 +1500,8 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
               <ScoreMeter score={score} size={110} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-slate-900 text-lg">{mode === "image" ? "Image Analysis Score" : "Credibility Score"}: {score}/100</h3>
-                  <CheckCircle size={18} style={{ color: GREEN }} />
+                  <h3 className="font-bold text-slate-900 text-lg">{mode === "image" ? "File Review Readiness" : "Verification Readiness"}: {score}/100</h3>
+                  {analysisStatus === "insufficient_evidence" ? <AlertTriangle size={18} style={{ color: AMBER }} /> : <CheckCircle size={18} style={{ color: GREEN }} />}
                 </div>
                 {(analysis?.sourceUrl || analysis?.sourceTitle) && (
                   <p className="text-xs text-slate-400 mb-2 break-all">
@@ -1498,6 +1510,14 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
                   </p>
                 )}
                 <p className="text-sm text-slate-600 mb-4">{analysis.summary}</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Chip
+                    label={analysisStatus === "insufficient_evidence" ? "Insufficient evidence" : analysisStatus === "mixed" ? "Mixed evidence" : "Possible corroboration"}
+                    color={analysisStatus === "insufficient_evidence" ? AMBER : analysisStatus === "mixed" ? BLUE : GREEN}
+                    bg={(analysisStatus === "insufficient_evidence" ? AMBER : analysisStatus === "mixed" ? BLUE : GREEN) + "15"}
+                  />
+                  <Chip label={`${analysisConfidence}% analysis confidence`} color={BLUE} bg={BLUE + "15"} />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {chips.map((chip) => (
                     <Chip
@@ -1557,7 +1577,7 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
             <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart2 size={16} style={{ color: BLUE }} />
-                <h4 className="font-bold text-slate-900 text-sm">Score Breakdown</h4>
+                <h4 className="font-bold text-slate-900 text-sm">Verification Readiness Breakdown</h4>
               </div>
               <div className="space-y-3">
                 {scoreBreakdown.map((item) => (
@@ -1575,6 +1595,16 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
             </div>
           </div>
 
+          <div className="bg-amber-50 rounded-2xl p-5 border border-amber-100">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={16} style={{ color: AMBER }} />
+              <h4 className="font-bold text-amber-900 text-sm">What this analysis cannot prove</h4>
+            </div>
+            <ul className="space-y-2">
+              {limitations.map((limitation) => <li key={limitation} className="text-xs text-amber-900 leading-relaxed">• {limitation}</li>)}
+            </ul>
+          </div>
+
           {/* Claims and evidence */}
           <div className="grid lg:grid-cols-2 gap-4">
             <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -1590,7 +1620,7 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
                         <p className="text-xs font-semibold text-slate-800 leading-relaxed">{claim.claim}</p>
                         <span className="text-xs font-mono text-slate-500 flex-shrink-0">{claim.confidence}%</span>
                       </div>
-                      <Chip label={claim.status} color={claim.status.includes("Supported") ? GREEN : claim.status.includes("Present") ? AMBER : "#EF4444"} bg={(claim.status.includes("Supported") ? GREEN : claim.status.includes("Present") ? AMBER : "#EF4444") + "15"} />
+                      <Chip label={claim.status} color={claim.status.includes("corroboration") ? GREEN : claim.status.includes("Related") || claim.status.includes("Present") ? AMBER : "#EF4444"} bg={(claim.status.includes("corroboration") ? GREEN : claim.status.includes("Related") || claim.status.includes("Present") ? AMBER : "#EF4444") + "15"} />
                       <p className="text-xs text-slate-500 mt-2 leading-relaxed">{claim.evidence}</p>
                     </div>
                   ))}
@@ -1631,7 +1661,7 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
             <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} style={{ color: BLUE }} />
-                <h4 className="font-bold text-blue-900 text-sm">Credibility Summary</h4>
+                <h4 className="font-bold text-blue-900 text-sm">Evidence Summary</h4>
               </div>
                 <p className="text-sm text-blue-800 leading-relaxed">{analysis.summary}</p>
             </div>
@@ -1674,7 +1704,7 @@ function ContentAnalyzer({ setScreen, onAnalysisComplete }: { setScreen: (s: Scr
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DEEPFAKE DETECTOR
+// MEDIA INTEGRITY CHECK
 // ══════════════════════════════════════════════════════════════════════════════
 function DeepfakeDetector() {
   const [mediaType, setMediaType] = useState<"image" | "video" | "audio">("image");
@@ -1687,7 +1717,7 @@ function DeepfakeDetector() {
 
   const run = async () => {
     if (!selectedMedia) {
-      setUploadError(`Choose a ${mediaType} file before running detection.`);
+      setUploadError(`Choose a ${mediaType} file before running the integrity check.`);
       return;
     }
     setAnalyzing(true);
@@ -1699,7 +1729,7 @@ function DeepfakeDetector() {
       setDone(true);
     } catch (error) {
       setAnalysis(null);
-      setAnalysisError(error instanceof Error ? error.message : "Deepfake analysis failed. Please try again.");
+      setAnalysisError(error instanceof Error ? error.message : "Media integrity analysis failed. Please try again.");
     } finally {
       setAnalyzing(false);
     }
@@ -1743,8 +1773,8 @@ function DeepfakeDetector() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Deepfake Detector</h1>
-        <p className="text-slate-500 text-sm mt-1">Upload media to detect AI-generated or manipulated content using multi-modal analysis.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">Media Integrity & Provenance Check</h1>
+        <p className="text-slate-500 text-sm mt-1">Inspect file signatures, metadata, dimensions, hashes, and embedded generator markers. This is not a visual or audio deepfake classifier.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
@@ -1788,7 +1818,7 @@ function DeepfakeDetector() {
 
         <div className="flex justify-end mt-4">
           <button onClick={run} disabled={analyzing || !selectedMedia} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: `linear-gradient(135deg, ${BLUE}, #1d4ed8)` }}>
-            {analyzing ? <><RefreshCw size={15} className="animate-spin" /> Analyzing…</> : <><Eye size={15} /> Detect Deepfake</>}
+            {analyzing ? <><RefreshCw size={15} className="animate-spin" /> Inspecting…</> : <><Eye size={15} /> Check File Integrity</>}
           </button>
         </div>
       </div>
@@ -1824,7 +1854,7 @@ function DeepfakeDetector() {
 
           {/* Detection indicators */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="font-bold text-slate-900 mb-5">Detection Indicators</h3>
+            <h3 className="font-bold text-slate-900 mb-5">File and Provenance Signals</h3>
             <div className="space-y-4">
               {indicators.map(ind => (
                 <div key={ind.label}>
@@ -1854,7 +1884,7 @@ function DeepfakeDetector() {
               </div>
             </div>
             <div className="bg-red-50 rounded-2xl p-5 border border-red-100">
-              <h4 className="font-bold text-red-900 text-sm mb-3 flex items-center gap-2"><Sparkles size={14} style={{ color: "#EF4444" }} /> AI Analysis</h4>
+              <h4 className="font-bold text-red-900 text-sm mb-3 flex items-center gap-2"><Sparkles size={14} style={{ color: "#EF4444" }} /> Scope and Findings</h4>
               <p className="text-xs text-red-800 leading-relaxed">{analysis.aiSummary}</p>
             </div>
           </div>
@@ -2381,7 +2411,7 @@ function QuizScreen({ bootstrap, setScreen, onWin }: { bootstrap: AppBootstrap |
       </div>
       <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center">
         <ScoreMeter score={Math.round((score / quizList.length) * 100)} size={140} />
-        <p className="mt-3 font-semibold text-slate-700">Accuracy Rate</p>
+        <p className="mt-3 font-semibold text-slate-700">Quiz Accuracy</p>
       </div>
       {!passed && (
         <div className="w-full rounded-2xl border border-amber-100 bg-amber-50 p-5 text-center">
@@ -2571,7 +2601,7 @@ function StudentProfile({ bootstrap }: { bootstrap: AppBootstrap | null }) {
               { label: "Fact-Checking Accuracy", value: "91%", color: GREEN },
               { label: "Bias Detection", value: "84%", color: TEAL },
               { label: "Source Evaluation", value: "88%", color: BLUE },
-              { label: "Deepfake Detection", value: "79%", color: PURPLE },
+              { label: "Media Provenance", value: "79%", color: PURPLE },
             ].map(s => (
               <div key={s.label}>
                 <p className="text-xs text-slate-500 mb-1">{s.label}</p>
@@ -2604,7 +2634,7 @@ function TeacherDashboard({ bootstrap, progress, setScreen }: { bootstrap: AppBo
     { name: "Fact Checking", value: 85 },
     { name: "Source Verification", value: 78 },
     { name: "Bias Detection", value: 72 },
-    { name: "Deepfake Detection", value: 65 },
+    { name: "Media Provenance", value: 65 },
   ];
   const completionData = bootstrap?.teacher?.completionData ?? [
     { name: "Completed", value: 24, color: "#22C55E" },
@@ -2656,7 +2686,7 @@ function TeacherDashboard({ bootstrap, progress, setScreen }: { bootstrap: AppBo
       {/* Class summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={<Users size={20} />} label="Students" value="28" sub="24 active this week" color={BLUE} />
-        <StatCard icon={<TrendingUp size={20} />} label="Class Average" value={progress.challengeWon ? "81" : "76"} sub={progress.challengeWon ? "↑ 5 pts after live challenge" : "↑ 8 pts from last month"} color={GREEN} />
+        <StatCard icon={<TrendingUp size={20} />} label="Demo Class Average" value={progress.challengeWon ? "81" : "76"} sub={progress.challengeWon ? "Simulated +5 after challenge" : "Illustrative preview data"} color={GREEN} />
         <StatCard icon={<BookOpen size={20} />} label="Lessons Assigned" value="12" sub="9 completed by class" color={TEAL} />
         <StatCard icon={<Trophy size={20} />} label="Challenges Done" value={progress.quizWon || progress.challengeWon ? "157" : "156"} sub={progress.quizWon || progress.challengeWon ? "Jordan completed one now" : "Across all students"} color={AMBER} />
       </div>
@@ -2664,13 +2694,13 @@ function TeacherDashboard({ bootstrap, progress, setScreen }: { bootstrap: AppBo
       <div className={cn("rounded-2xl border p-5", progress.analysisComplete || progress.quizWon || progress.challengeWon ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100")}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: progress.challengeWon ? GREEN : AMBER }}>Live Student Outcome</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: progress.challengeWon ? GREEN : AMBER }}>Simulated Demo Outcome</p>
             <h2 className="font-extrabold text-slate-900 text-lg">
               {progress.challengeWon ? "Jordan moved from progressing to on-track" : progress.quizWon ? "Jordan earned the Truth Guardian badge" : progress.analysisComplete ? "Jordan analyzed a risky viral post" : "Run a live analysis to generate an outcome"}
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               {progress.challengeWon
-                ? "The teacher can now see the completed challenge, higher literacy score, and source-verification growth."
+                ? "The teacher can now see the completed challenge and an illustrative score change. Production impact requires measured pre/post assessment data."
                 : "Use the Analyzer and Challenge screens to update this classroom view during the pitch."}
             </p>
             {interventionAssigned && (
@@ -2798,7 +2828,7 @@ function ImpactSummary({ progress, setScreen }: { progress: DemoProgress; setScr
   const impactStats = [
     { label: "Risky Posts Analyzed", value: progress.analysisComplete ? "1" : "0", detail: "Viral classroom claim checked", color: BLUE, icon: <Search size={20} /> },
     { label: "Unsupported Claims Found", value: progress.analysisComplete ? "3" : "0", detail: "Claims routed to evidence checks", color: AMBER, icon: <AlertTriangle size={20} /> },
-    { label: "Student Score Lift", value: progress.challengeWon ? "+17" : progress.quizWon ? "+14" : progress.analysisComplete ? "+8" : "0", detail: "Jordan's literacy score change", color: GREEN, icon: <TrendingUp size={20} /> },
+    { label: "Simulated Score Lift", value: progress.challengeWon ? "+17" : progress.quizWon ? "+14" : progress.analysisComplete ? "+8" : "0", detail: "Illustrative demo—not a measured result", color: GREEN, icon: <TrendingUp size={20} /> },
     { label: "Teacher Action", value: progress.challengeWon ? "Ready" : "Pending", detail: "Intervention and feedback prepared", color: PURPLE, icon: <GraduationCap size={20} /> },
   ];
 
@@ -2807,7 +2837,7 @@ function ImpactSummary({ progress, setScreen }: { progress: DemoProgress; setScr
       <div className="rounded-2xl p-6 text-white" style={{ background: `linear-gradient(135deg, ${BLUE}, ${TEAL})` }}>
         <p className="text-sm font-bold uppercase tracking-wide text-blue-100 mb-2">Final Hackathon Takeaway</p>
         <h1 className="text-3xl font-extrabold max-w-3xl">TruthQuest turns misinformation detection into measurable classroom learning.</h1>
-        <p className="text-blue-100 text-sm mt-3 max-w-2xl">The winning story is not just that AI flags risky content. It teaches the student what to check next and gives the teacher an actionable outcome.</p>
+        <p className="text-blue-100 text-sm mt-3 max-w-2xl">TruthQuest teaches the student what to check next and gives the teacher an actionable workflow. Score changes shown in this prototype are simulated until a classroom pilot provides measured results.</p>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2892,7 +2922,7 @@ function MobileView({ bootstrap }: { bootstrap: AppBootstrap | null }) {
         setError("Please enter a URL or text to analyze.");
         return;
       }
-      const response = await analyzeContent({ mode: "url", input: trimmed });
+      const response = await analyzeContent({ mode: detectContentAnalysisMode(trimmed), input: trimmed });
       setAnalysis(response);
     } catch (err) {
       setAnalysis(null);
@@ -3190,7 +3220,7 @@ export default function App() {
       landing: "TruthQuest AI | AI-Powered Media Literacy",
       dashboard: "Dashboard | TruthQuest AI",
       analyzer: "Content Analyzer | TruthQuest AI",
-      deepfake: "Deepfake Detector | TruthQuest AI",
+      deepfake: "Media Integrity Check | TruthQuest AI",
       learning: "Learning Hub | TruthQuest AI",
       quiz: "Media Literacy Challenge | TruthQuest AI",
       profile: "Profile | TruthQuest AI",
